@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
-from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QScrollArea, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QVBoxLayout, QWidget
 
 from gpc_dtwin.services.analytics_service import AnalyticsService
 from gpc_dtwin.services.audit_service import AuditService
@@ -14,12 +14,7 @@ class OverviewPage(QWidget):
         self.context = context
         self.analytics = AnalyticsService()
 
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        content = QWidget()
-        self.root = QVBoxLayout(content)
+        self.root = QVBoxLayout(self)
         self.root.setContentsMargins(24, 22, 24, 24)
         self.root.setSpacing(16)
         self.root.addWidget(SectionHeader(
@@ -54,8 +49,6 @@ class OverviewPage(QWidget):
         charts.addWidget(self.heatmap_chart, 1)
         self.root.addLayout(charts)
         self.root.addStretch()
-        scroll.setWidget(content)
-        outer.addWidget(scroll)
 
         self.context.data_changed.connect(self.refresh)
         self.context.audit_changed.connect(self.refresh)

@@ -11,4 +11,8 @@ Set-Location $RepoRoot
 if ($LASTEXITCODE -ne 0) { throw "Windows build failed." }
 New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "dist\GPC-DTwin\models\trained") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "dist\GPC-DTwin\models\twins") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "dist\GPC-DTwin\models\ndt") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "dist\GPC-DTwin\models\durability") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "dist\GPC-DTwin\models\optimizations") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "dist\GPC-DTwin\models\active_learning") | Out-Null
 Write-Host "Build created in dist\GPC-DTwin" -ForegroundColor Green

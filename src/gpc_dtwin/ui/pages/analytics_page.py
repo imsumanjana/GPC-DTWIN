@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 
+from gpc_dtwin.figure_export import save_square_figure
 from gpc_dtwin.paths import EXPORT_DIR
 from gpc_dtwin.services.analytics_service import AnalyticsService
 from gpc_dtwin.services.data_service import DataService
@@ -116,7 +117,7 @@ class AnalyticsPage(QWidget):
         if not destination.suffix:
             destination = destination.with_suffix(".png")
         try:
-            self.figure.savefig(destination, dpi=600, bbox_inches="tight")
+            save_square_figure(self.figure, destination)
             self.context.message.emit(f"Figure exported to {destination.name}.")
         except Exception as error:
             QMessageBox.critical(self, "Figure export failed", str(error))

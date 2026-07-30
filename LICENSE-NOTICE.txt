@@ -1,5 +1,4 @@
-GPC-DTwin v0.4
+GPC-DTwin v0.8
 
-This repository contains application code, configuration, documentation, and a structured example dataset. Confirm ownership, licensing, and distribution rights for any external data imported into the application.
-
+This repository contains the GPC-DTwin desktop application and its supporting resources.
 Third-party Python packages remain subject to their respective licenses.

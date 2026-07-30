@@ -80,6 +80,42 @@ class SQLiteRepository:
             connection.execute("DELETE FROM material_records")
             connection.executemany(insert_sql, records)
 
+
+    def append_records(self, dataframe: pd.DataFrame) -> int:
+        """Append compatible records while rejecting duplicate record identifiers."""
+        self.initialize()
+        missing = [column for column in DATA_COLUMNS if column not in dataframe.columns]
+        if missing:
+            raise ValueError("Dataset is missing columns: " + ", ".join(missing))
+        ordered = dataframe.loc[:, DATA_COLUMNS].copy()
+        identifiers = ordered["record_id"].astype("string").str.strip()
+        if identifiers.eq("").any() or identifiers.isna().any():
+            raise ValueError("Every appended record requires a record_id.")
+        if identifiers.duplicated().any():
+            duplicates = sorted(identifiers[identifiers.duplicated()].unique().tolist())
+            raise ValueError("Duplicate record IDs in the selected CSV: " + ", ".join(duplicates))
+
+        placeholders = ", ".join("?" for _ in DATA_COLUMNS)
+        columns_sql = ", ".join(_quote(column) for column in DATA_COLUMNS)
+        insert_sql = f"INSERT INTO material_records ({columns_sql}) VALUES ({placeholders})"
+        records = []
+        for values in ordered.itertuples(index=False, name=None):
+            row = []
+            for value in values:
+                if pd.isna(value) or value == "":
+                    row.append(None)
+                else:
+                    row.append(value.item() if hasattr(value, "item") else value)
+            records.append(tuple(row))
+        try:
+            with self.connect() as connection:
+                connection.executemany(insert_sql, records)
+        except sqlite3.IntegrityError as error:
+            raise ValueError(
+                "One or more record IDs already exist in the active dataset."
+            ) from error
+        return len(records)
+
     def load_records(self) -> pd.DataFrame:
         self.initialize()
         columns_sql = ", ".join(_quote(column) for column in DATA_COLUMNS)

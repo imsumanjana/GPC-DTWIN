@@ -12,3 +12,13 @@ exports/*
 !exports/.gitkeep
 models/trained/*
 !models/trained/.gitkeep
+models/twins/*
+!models/twins/.gitkeep
+models/ndt/*
+!models/ndt/.gitkeep
+models/durability/*
+!models/durability/.gitkeep
+models/optimizations/*
+!models/optimizations/.gitkeep
+models/active_learning/*
+!models/active_learning/.gitkeep

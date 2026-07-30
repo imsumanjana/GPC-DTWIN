@@ -5,20 +5,25 @@ from pathlib import Path
 from PyQt6.QtCore import QSettings, Qt
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
-    QApplication, QFileDialog, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
-    QPushButton, QStackedWidget, QStatusBar, QVBoxLayout, QWidget
+    QApplication, QFileDialog, QFrame, QHBoxLayout, QLabel, QMainWindow,
+    QMessageBox, QPushButton, QStackedWidget, QStatusBar, QVBoxLayout, QWidget,
 )
 
 from gpc_dtwin import __version__
 from gpc_dtwin.paths import EXPORT_DIR
+from gpc_dtwin.ui.pages.active_learning_page import ActiveLearningPage
 from gpc_dtwin.ui.pages.analytics_page import AnalyticsPage
 from gpc_dtwin.ui.pages.audit_page import AuditPage
 from gpc_dtwin.ui.pages.database_page import DatabasePage
 from gpc_dtwin.ui.pages.digital_twin_page import DigitalTwinPage
 from gpc_dtwin.ui.pages.modeling_page import ModelingPage
+from gpc_dtwin.ui.pages.ndt_durability_page import NDTDurabilityPage
+from gpc_dtwin.ui.pages.optimization_page import OptimizationPage
 from gpc_dtwin.ui.pages.overview_page import OverviewPage
 from gpc_dtwin.ui.pages.settings_page import SettingsPage
 from gpc_dtwin.ui.pages.statistics_page import StatisticsPage
+from gpc_dtwin.ui.pages.visualization_3d_page import Visualization3DPage
+from gpc_dtwin.ui.scrolling import ResponsiveScrollArea, scrollable_page
 from gpc_dtwin.ui.theme import stylesheet
 
 
@@ -39,16 +44,20 @@ class MainWindow(QMainWindow):
         ("Statistical Analysis", "Descriptive statistics, group comparison, and regression"),
         ("Predictive Models", "Cross-validated model comparison, prediction, and model storage"),
         ("Digital Twin", "Uncertainty-aware prediction, calibration, reliability, and response maps"),
+        ("3D Explorer", "Interactive response surfaces, uncertainty landscapes, and specimen fields"),
+        ("NDT & Durability", "NDT fusion, exposure profiles, and uncertainty-aware durability estimates"),
+        ("Optimization", "Pareto trade-offs, engineering constraints, and inverse material design"),
+        ("Active Learning", "Uncertainty-guided experiment selection and closed-loop model updates"),
         ("Settings", "Appearance, storage, and dataset information"),
     ]
 
     def __init__(self, context, parent=None):
         super().__init__(parent)
         self.context = context
-        self.settings = QSettings("GPC-DTwin", "GPC-DTwin-v0.4")
+        self.settings = QSettings("GPC-DTwin", "GPC-DTwin-v0.8")
         self.setWindowTitle(f"GPC-DTwin v{__version__}")
-        self.resize(1540, 950)
-        self.setMinimumSize(1180, 760)
+        self.resize(1560, 960)
+        self.setMinimumSize(1040, 700)
 
         root_widget = QWidget()
         root_widget.setObjectName("AppRoot")
@@ -73,10 +82,17 @@ class MainWindow(QMainWindow):
             StatisticsPage(context),
             ModelingPage(context),
             DigitalTwinPage(context),
+            Visualization3DPage(context),
+            NDTDurabilityPage(context),
+            OptimizationPage(context),
+            ActiveLearningPage(context),
             SettingsPage(context),
         ]
+        self.page_containers = []
         for page in self.pages:
-            self.stack.addWidget(page)
+            container = scrollable_page(page, minimum_width=980)
+            self.page_containers.append(container)
+            self.stack.addWidget(container)
         self.pages[-1].theme_requested.connect(self.apply_theme)
         main_layout.addWidget(self.stack, 1)
         shell.addWidget(main, 1)
@@ -110,15 +126,19 @@ class MainWindow(QMainWindow):
         titles = QVBoxLayout()
         title = QLabel("GPC-DTwin")
         title.setObjectName("BrandTitle")
-        subtitle = QLabel("Materials Analytics · v0.4")
+        subtitle = QLabel("Materials Analytics · v0.8")
         subtitle.setObjectName("BrandSubtitle")
         titles.addWidget(title)
         titles.addWidget(subtitle)
         brand.addWidget(mark)
         brand.addLayout(titles, 1)
         layout.addLayout(brand)
-        layout.addSpacing(22)
+        layout.addSpacing(12)
 
+        nav_host = QWidget()
+        nav_layout = QVBoxLayout(nav_host)
+        nav_layout.setContentsMargins(0, 4, 4, 4)
+        nav_layout.setSpacing(8)
         labels = [
             "O   Overview",
             "D   Data Explorer",
@@ -127,26 +147,33 @@ class MainWindow(QMainWindow):
             "S   Statistical Analysis",
             "M   Predictive Models",
             "T   Digital Twin",
+            "3D  3D Explorer",
+            "ND  NDT & Durability",
+            "OP  Optimization",
+            "AL  Active Learning",
             "⚙   Settings",
         ]
         self.nav_buttons: list[NavButton] = []
         for index, label in enumerate(labels):
             button = NavButton(label)
             button.clicked.connect(lambda checked=False, i=index: self.navigate(i))
-            layout.addWidget(button)
+            nav_layout.addWidget(button)
             self.nav_buttons.append(button)
-        layout.addStretch()
-
+        nav_layout.addStretch()
         coverage = QLabel("FA · GGBS · SF\nMechanical · NDT · Durability")
         coverage.setObjectName("BrandSubtitle")
         coverage.setWordWrap(True)
-        layout.addWidget(coverage)
+        nav_layout.addWidget(coverage)
+
+        nav_scroll = ResponsiveScrollArea(nav_host)
+        nav_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        layout.addWidget(nav_scroll, 1)
         return sidebar
 
     def _build_topbar(self) -> QFrame:
         topbar = QFrame()
         topbar.setObjectName("TopBar")
-        topbar.setFixedHeight(88)
+        topbar.setMinimumHeight(88)
         layout = QHBoxLayout(topbar)
         layout.setContentsMargins(24, 14, 24, 14)
 
@@ -156,6 +183,7 @@ class MainWindow(QMainWindow):
         self.page_title.setObjectName("PageTitle")
         self.page_subtitle = QLabel()
         self.page_subtitle.setObjectName("PageSubtitle")
+        self.page_subtitle.setWordWrap(True)
         titles.addWidget(self.page_title)
         titles.addWidget(self.page_subtitle)
         layout.addLayout(titles, 1)
@@ -194,12 +222,18 @@ class MainWindow(QMainWindow):
         data_menu.addAction(reload_action)
 
         analysis_menu = self.menuBar().addMenu("Analysis")
-        models_action = QAction("Open predictive models", self)
-        models_action.triggered.connect(lambda: self.navigate(5))
-        twin_action = QAction("Open digital twin", self)
-        twin_action.triggered.connect(lambda: self.navigate(6))
-        analysis_menu.addAction(models_action)
-        analysis_menu.addAction(twin_action)
+        actions = [
+            ("Open predictive models", 5),
+            ("Open digital twin", 6),
+            ("Open 3D explorer", 7),
+            ("Open NDT and durability", 8),
+            ("Open optimization", 9),
+            ("Open active learning", 10),
+        ]
+        for label, index in actions:
+            action = QAction(label, self)
+            action.triggered.connect(lambda checked=False, i=index: self.navigate(i))
+            analysis_menu.addAction(action)
 
     def navigate(self, index: int) -> None:
         self.stack.setCurrentIndex(index)
@@ -215,7 +249,9 @@ class MainWindow(QMainWindow):
         self.settings.setValue("theme", theme_name.title())
 
     def import_csv(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Import compatible dataset", "", "CSV data (*.csv)")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import compatible dataset", "", "CSV data (*.csv)"
+        )
         if not path:
             return
         answer = QMessageBox.question(

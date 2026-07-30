@@ -52,6 +52,21 @@ class ApplicationContext(QObject):
             self.audit_changed.emit()
             self.message.emit(f"Imported {len(dataframe)} records from {path.name}.")
 
+
+    def append_csv(self, path: Path | str, emit: bool = True) -> int:
+        """Append compatible completed records without replacing the active dataset."""
+        path = Path(path)
+        dataframe = DataService.load_csv(path)
+        appended = self.repository.append_records(dataframe)
+        self.last_import_path = path
+        self.reload(emit=False)
+        self.run_audit(emit=False)
+        if emit:
+            self.data_changed.emit()
+            self.audit_changed.emit()
+            self.message.emit(f"Appended {appended} records from {path.name}.")
+        return appended
+
     def reload(self, emit: bool = True) -> None:
         self.dataframe = self.repository.load_records()
         if emit:

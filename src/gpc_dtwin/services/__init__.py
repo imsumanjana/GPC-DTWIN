@@ -1,1 +1,1 @@
-"""Data, quality, analytics, and statistics services."""
+"""Scientific and data services used by GPC-DTwin."""

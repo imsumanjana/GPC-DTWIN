@@ -25,3 +25,11 @@ The exact header order is provided in `data/templates/GPC_Dataset_Template.csv`.
 - EXCLUDED
 
 Blank cells are permitted where a measurement does not apply to a record group. Required values are checked according to the record group.
+
+## Calculated analysis fields
+
+The NDT and durability workspaces calculate additional in-memory fields without changing the 44-field
+CSV schema. These include measured-reference strength, NDT estimates, residuals, strength retention,
+absolute mass change, mass-stability score, durability score, prediction intervals, and reliability
+classes. Exported analysis tables may therefore contain more fields than the source dataset.
+

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gpc-dtwin"
-version = "0.4.0"
-description = "Desktop analytics, predictive modeling, and uncertainty-aware digital twin platform for geopolymer concrete"
+version = "0.8.0"
+description = "Desktop geopolymer-concrete analytics platform with predictive modelling, digital twins, 3D exploration, NDT fusion, durability assessment, optimization, inverse design, and active learning"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 authors = [{name = "GPC-DTwin Team"}]

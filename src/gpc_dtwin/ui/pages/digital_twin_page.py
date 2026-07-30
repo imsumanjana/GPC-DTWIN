@@ -17,9 +17,11 @@ from gpc_dtwin.columns import (
     COLUMN_LABELS, MODEL_DEFAULT_PREDICTORS, MODEL_NUMERIC_PREDICTORS,
     MODEL_PREDICTOR_COLUMNS, MODEL_RESPONSE_COLUMNS,
 )
+from gpc_dtwin.figure_export import save_square_figure
 from gpc_dtwin.paths import EXPORT_DIR, TWIN_DIR
 from gpc_dtwin.services.digital_twin_service import DigitalTwinService, TwinBuildResult
 from gpc_dtwin.ui.models import DataFrameModel
+from gpc_dtwin.ui.scrolling import scrollable_panel
 from gpc_dtwin.ui.widgets import SectionHeader, ValuePill
 
 
@@ -89,7 +91,9 @@ class DigitalTwinPage(QWidget):
         build_button.setObjectName("PrimaryButton")
         build_button.clicked.connect(self.build_twin)
         controls_layout.addWidget(build_button)
-        splitter.addWidget(controls)
+        controls_scroll = scrollable_panel(controls, minimum_width=350)
+        controls_scroll.setMaximumWidth(470)
+        splitter.addWidget(controls_scroll)
 
         results = QWidget()
         results_layout = QVBoxLayout(results)
@@ -624,5 +628,5 @@ class DigitalTwinPage(QWidget):
             destination = Path(path)
             if not destination.suffix:
                 destination = destination.with_suffix(".png")
-            figure.savefig(destination, dpi=600, bbox_inches="tight")
+            save_square_figure(figure, destination)
             self.context.message.emit(f"Figure exported to {destination.name}.")

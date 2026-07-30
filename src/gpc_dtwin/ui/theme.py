@@ -43,7 +43,8 @@ def stylesheet(theme: str = "dark") -> str:
     QLabel#PageSubtitle, QLabel#SectionDescription, QLabel#Muted {{ color: {colors['muted']}; }}
     QLabel#SectionTitle {{ font-size: 15pt; font-weight: 720; }}
 
-    QFrame#Card, QFrame#MetricCard {{ background: {colors['panel']}; border: 1px solid {colors['border']}; border-radius: 12px; }}
+    QFrame#Card, QFrame#MetricCard, QFrame#InfoCard {{ background: {colors['panel']}; border: 1px solid {colors['border']}; border-radius: 12px; }}
+    QFrame#InfoCard {{ border-left: 3px solid {colors['accent']}; }}
     QFrame#MetricCard:hover {{ border: 1px solid {colors['accent']}; }}
     QLabel#MetricIcon {{ background: {colors['panel2']}; border: 1px solid {colors['border']}; border-radius: 10px; font-size: 15pt; }}
     QLabel#MetricValue {{ font-size: 20pt; font-weight: 780; }}
