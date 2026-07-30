@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gpc-dtwin"
+version = "0.4.0"
+description = "Desktop analytics, predictive modeling, and uncertainty-aware digital twin platform for geopolymer concrete"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+authors = [{name = "GPC-DTwin Team"}]
+dependencies = [
+  "PyQt6>=6.8,<7",
+  "numpy>=2.0,<3",
+  "pandas>=2.2,<4",
+  "matplotlib>=3.9,<4",
+  "scipy>=1.14,<2",
+  "scikit-learn>=1.5,<2",
+  "openpyxl>=3.1,<4",
+  "joblib>=1.4,<2"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<10",
+  "pytest-qt>=4.4,<5",
+  "pyinstaller>=6.10,<7"
+]
+
+[project.scripts]
+gpc-dtwin = "gpc_dtwin.app:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100

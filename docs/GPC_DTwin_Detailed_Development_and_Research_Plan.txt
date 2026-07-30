@@ -1,0 +1,1818 @@
+DETAILED DEVELOPMENT AND RESEARCH PLAN
+Python–PyQt6-Based Digital Twin, Simulation, Optimisation and 3D Visualisation Platform
+for Geopolymer Concrete
+
+Prepared for:
+Development of a transaction-level journal contribution from the existing experimental study on
+fly ash–GGBS–silica fume geopolymer concrete.
+
+Proposed software name:
+GPC-DTwin
+Geopolymer Concrete Digital Twin and Intelligent Mix-Design Platform
+
+
+======================================================================
+1. PROJECT BACKGROUND
+======================================================================
+
+The existing experimental work investigates geopolymer concrete produced using fly ash (FA),
+ground granulated blast furnace slag (GGBS), and silica fume (SF). The source study includes:
+
+1. Ten mix designs with varying FA and GGBS proportions.
+2. Silica fume fixed at 10% of total binder.
+3. Sodium hydroxide concentration fixed at 10 M.
+4. Sodium silicate-to-sodium hydroxide ratio fixed at approximately 2:1 by mass.
+5. Superplasticiser fixed at 2%.
+6. Alkaline activator-to-binder ratios of 0.40, 0.45, and 0.50 for workability and selected
+   compressive-strength analysis.
+7. Ambient curing results at 7 and 28 days.
+8. Dry-oven curing at 100 °C for 24 hours for selected mixes.
+9. Mechanical properties:
+   - compressive strength,
+   - splitting tensile strength,
+   - flexural strength.
+10. Non-destructive test results:
+    - ultrasonic pulse velocity,
+    - rebound hammer-based strength.
+11. Durability results after exposure to 5% H2SO4 and 5% HCl:
+    - specimen mass change,
+    - residual compressive strength,
+    - percentage strength reduction.
+
+The experimental results indicate that no single mix is optimal for every property. The mix with
+approximately 80% GGBS provides the highest compressive strength, while the mix with approximately
+70% GGBS provides a better balance of tensile strength, flexural strength, and acid resistance.
+This trade-off provides a strong basis for multi-objective optimisation and inverse mix design.
+
+The software must therefore be developed as a scientific decision-support and digital-twin system,
+not merely as a graphical display application.
+
+
+======================================================================
+2. CENTRAL RESEARCH CONCEPT
+======================================================================
+
+The proposed contribution is:
+
+“An uncertainty-aware, experimentally calibrated digital twin with multi-objective inverse design,
+active-learning-based experiment recommendation, non-destructive-test fusion, and interactive 3D
+response visualisation for geopolymer concrete.”
+
+The novelty must lie in the following research functions:
+
+1. Experimental data integration and consistency checking.
+2. Physics-informed and data-driven response modelling.
+3. Property prediction with uncertainty bounds.
+4. Multi-objective optimisation of strength, workability, durability, and sustainability.
+5. Inverse mix design based on target engineering performance.
+6. Fusion of destructive and non-destructive testing data.
+7. Interactive 2D, heatmap, and 3D response visualisation.
+8. Active-learning recommendation of future laboratory experiments.
+9. Transparent reporting of measured, interpolated, and predicted results.
+10. Reproducible export of figures, tables, model metrics, and reports.
+
+The PyQt6 interface is the application layer. It is not itself the principal novelty.
+
+
+======================================================================
+3. PROPOSED RESEARCH OBJECTIVES
+======================================================================
+
+Objective 1:
+Create a validated digital database from the existing geopolymer concrete experiments.
+
+Objective 2:
+Develop statistical and machine-learning models for predicting fresh, mechanical,
+non-destructive, and durability properties.
+
+Objective 3:
+Quantify model uncertainty and identify regions where the experimental evidence is weak.
+
+Objective 4:
+Develop a multi-objective optimiser to identify Pareto-optimal geopolymer concrete mixtures.
+
+Objective 5:
+Develop an inverse design module that recommends mix compositions for user-defined target
+properties.
+
+Objective 6:
+Develop a non-destructive-test fusion model combining UPV, rebound hammer, mix composition,
+and curing condition.
+
+Objective 7:
+Create interactive 2D graphs, heatmaps, 3D response surfaces, and a heatmap-style virtual specimen.
+
+Objective 8:
+Develop an active-learning module that recommends the next most informative laboratory mixes.
+
+Objective 9:
+Validate the recommended mixes experimentally and update the digital twin.
+
+Objective 10:
+Use the complete framework to produce a transaction-level journal manuscript with a strong
+methodological contribution.
+
+
+======================================================================
+4. SCIENTIFIC QUESTIONS TO BE ANSWERED
+======================================================================
+
+The software and research should answer the following questions:
+
+1. How do FA percentage, GGBS percentage, AAS:B ratio, curing age, and curing regime affect
+   strength and workability?
+
+2. Can a small-data uncertainty-aware model predict compressive, splitting tensile, and flexural
+   strength reliably within the tested domain?
+
+3. Which mix is optimal when compressive strength, tensile performance, workability, and acid
+   resistance are considered simultaneously?
+
+4. Can UPV and rebound hammer results be fused with composition data to improve strength
+   estimation?
+
+5. Which untested mix combinations are likely to provide better performance?
+
+6. Where is the model uncertain, and which new experiments would reduce that uncertainty most
+   efficiently?
+
+7. Can the proposed method identify high-performance mixtures using fewer experiments than a
+   conventional full-factorial study?
+
+8. Can the software clearly distinguish measured results, interpolation, extrapolation, and
+   model-generated predictions?
+
+
+======================================================================
+5. DATA AUDIT BEFORE SOFTWARE MODELLING
+======================================================================
+
+No model should be trained until the experimental dataset is audited.
+
+5.1 Required checks
+
+1. Verify the exact FA:GGBS:SF composition of every mix.
+2. Confirm whether M6 is 50:40:10 or another composition.
+3. Confirm whether M10 is 90:0:10 rather than 90:10:10.
+4. Confirm the correct aggregate proportion:
+   - abstract mentions 60% coarse and 40% fine aggregate,
+   - methods and mass values indicate approximately 70% coarse and 30% fine aggregate.
+5. Confirm specimen dimensions and correct units:
+   - cube,
+   - cylinder,
+   - beam.
+6. Resolve differences between reported 28-day compressive strengths in different tables.
+7. Determine whether conflicting values correspond to:
+   - separate test batches,
+   - different AAS:B ratios,
+   - different curing conditions,
+   - typographical errors,
+   - averaged versus individual readings.
+8. Verify the number of replicate specimens for every test.
+9. Collect specimen-level raw readings instead of only average values wherever possible.
+10. Verify error bars, standard deviation, coefficient of variation, and outlier-removal rules.
+11. Confirm all standards and replace withdrawn or superseded standards where required.
+12. Verify UPV quality classifications.
+13. Confirm acid exposure duration, solution replacement frequency, and specimen conditioning.
+14. Confirm whether rebound hammer data are direct readings or converted strengths.
+
+5.2 Data-status classification
+
+Every record should receive one of the following labels:
+
+- VERIFIED
+- VERIFIED WITH ASSUMPTION
+- REQUIRES CONFIRMATION
+- CONFLICTING
+- EXCLUDED FROM MODELLING
+
+5.3 Source traceability
+
+Every numerical record should preserve:
+
+- source table number,
+- source page,
+- original unit,
+- corrected unit if confirmed,
+- reason for correction,
+- person who confirmed the correction,
+- confirmation date.
+
+
+======================================================================
+6. PROPOSED DATABASE STRUCTURE
+======================================================================
+
+A structured local database should be created using SQLite.
+
+6.1 Main tables
+
+A. mixes
+- mix_id
+- fa_percent
+- ggbs_percent
+- sf_percent
+- binder_total_kg_m3
+- coarse_aggregate_kg_m3
+- fine_aggregate_kg_m3
+- naoh_kg_m3
+- na2sio3_kg_m3
+- naoh_molarity
+- activator_ratio
+- aas_b_ratio
+- superplasticiser_percent
+- additional_water_percent
+- source_status
+
+B. specimens
+- specimen_id
+- mix_id
+- specimen_type
+- dimensions
+- casting_date
+- demoulding_age
+- curing_regime
+- curing_temperature
+- curing_duration
+- test_age
+- batch_id
+
+C. fresh_properties
+- specimen_id or batch_id
+- slump_mm
+- workability_class
+- test_standard
+- measurement_time_after_mixing
+
+D. mechanical_properties
+- specimen_id
+- compressive_strength_mpa
+- split_tensile_strength_mpa
+- flexural_strength_mpa
+- failure_load
+- loading_rate
+- failure_mode
+
+E. ndt_results
+- specimen_id
+- upv_m_s
+- upv_path
+- rebound_number
+- rebound_estimated_strength_mpa
+- test_location_x
+- test_location_y
+- test_location_z
+- measurement_face
+
+F. durability_results
+- specimen_id
+- exposure_medium
+- concentration_percent
+- exposure_days
+- initial_mass_kg
+- exposed_mass_kg
+- mass_change_percent
+- initial_strength_mpa
+- residual_strength_mpa
+- strength_loss_percent
+- visual_damage_score
+
+G. model_runs
+- model_run_id
+- target_property
+- model_type
+- feature_set
+- train_date
+- validation_method
+- random_seed
+- metrics
+- software_version
+
+H. predictions
+- prediction_id
+- model_run_id
+- input_conditions
+- predicted_value
+- lower_confidence_limit
+- upper_confidence_limit
+- interpolation_or_extrapolation
+- reliability_class
+
+I. optimisation_runs
+- optimisation_id
+- objectives
+- constraints
+- decision_variables
+- pareto_solutions
+- selected_solution
+- selection_reason
+
+J. active_learning_recommendations
+- recommendation_id
+- proposed_mix
+- predicted_outputs
+- uncertainty_score
+- expected_information_gain
+- expected_improvement
+- laboratory_status
+
+
+======================================================================
+7. SOFTWARE ARCHITECTURE
+======================================================================
+
+The software should follow a modular architecture.
+
+7.1 Main layers
+
+Layer 1: User Interface
+- PyQt6
+- menus, forms, dashboards, tables, plots, 3D viewer
+
+Layer 2: Application Services
+- data import service
+- validation service
+- modelling service
+- optimisation service
+- reporting service
+
+Layer 3: Scientific Computing
+- NumPy
+- pandas
+- SciPy
+- scikit-learn
+- statsmodels
+- Optuna or pymoo
+- SHAP where scientifically appropriate
+- uncertainty estimation libraries
+
+Layer 4: Visualisation
+- Matplotlib for publication figures
+- Plotly for interactive plots
+- PyVista/VTK for 3D response surfaces and virtual specimens
+- QWebEngineView for embedded interactive HTML plots where required
+
+Layer 5: Storage
+- SQLite database
+- CSV/Excel import and export
+- JSON model configuration
+- joblib model storage
+
+Layer 6: Reporting
+- PDF report
+- CSV/Excel result export
+- publication-ready PNG, SVG, PDF, and TIFF figures
+- model metadata and reproducibility log
+
+7.2 Recommended Python packages
+
+Core:
+- Python 3.12 or a version compatible with all selected libraries
+- PyQt6
+- NumPy
+- pandas
+- SciPy
+- scikit-learn
+- statsmodels
+- joblib
+
+Visualisation:
+- Matplotlib
+- Plotly
+- PyVista
+- pyvistaqt
+- VTK
+
+Optimisation:
+- pymoo
+- Optuna
+- DEAP if needed for comparison
+
+Reporting:
+- openpyxl
+- reportlab
+- Jinja2
+- WeasyPrint if HTML-to-PDF export is selected
+
+Testing:
+- pytest
+- pytest-qt
+- hypothesis for selected data-validation tests
+
+Packaging:
+- PyInstaller
+- briefcase may be evaluated later
+
+
+======================================================================
+8. PROPOSED PYQT6 USER INTERFACE
+======================================================================
+
+8.1 Main window
+
+The main window should contain:
+
+Left navigation panel:
+1. Project Dashboard
+2. Experimental Database
+3. Data Audit
+4. Statistical Analysis
+5. Prediction Models
+6. NDT Fusion
+7. Durability Simulation
+8. Optimisation
+9. Inverse Mix Design
+10. 3D Visualisation
+11. Active Learning
+12. Report Generator
+13. Settings and Reproducibility
+
+Top toolbar:
+- New Project
+- Open Project
+- Import Data
+- Save
+- Run Analysis
+- Export
+- Help
+
+Status bar:
+- active dataset
+- number of verified records
+- selected model
+- current software version
+- CPU/GPU status if later required
+
+8.2 Dashboard page
+
+Display:
+- total mixes
+- total specimens
+- verified records
+- conflicting records
+- properties available
+- best compressive mix
+- best flexural mix
+- best tensile mix
+- best acid-resistant mix
+- currently selected Pareto-optimal mix
+- model reliability summary
+
+8.3 Experimental database page
+
+Functions:
+- spreadsheet-style table
+- filtering
+- search
+- sorting
+- unit display
+- source traceability
+- data-status flag
+- edit history
+- record locking after verification
+
+8.4 Data audit page
+
+Display:
+- missing-value matrix
+- duplicate records
+- inconsistent units
+- conflicting values
+- impossible compositions
+- FA + GGBS + SF sum check
+- outlier detection
+- replicate consistency
+- warnings before model training
+
+8.5 Model-building page
+
+Controls:
+- target variable
+- input variables
+- model selection
+- cross-validation method
+- train-test settings
+- random seed
+- uncertainty method
+- hyperparameter search
+- run button
+
+Outputs:
+- validation metrics
+- residual plots
+- prediction intervals
+- feature importance
+- model comparison
+- saved model version
+
+8.6 Optimisation page
+
+Controls:
+- select objectives
+- select maximise/minimise
+- set minimum workability
+- set strength requirements
+- set durability requirements
+- set composition bounds
+- set allowable AAS:B ratio
+- set curing preference
+- set cost or carbon weights if available
+
+Outputs:
+- Pareto front
+- recommended solutions
+- trade-off table
+- confidence and reliability
+- reason for recommendation
+
+8.7 Inverse mix design page
+
+User enters:
+- target compressive strength
+- target flexural strength
+- target splitting tensile strength
+- minimum slump
+- maximum strength loss after acid exposure
+- preferred curing regime
+- permitted binder ranges
+
+Software returns:
+- recommended mix composition
+- predicted properties
+- prediction intervals
+- nearest tested mixtures
+- distance from experimental domain
+- reliability class
+- warning if extrapolation is involved
+
+8.8 Active-learning page
+
+Display:
+- candidate design space
+- current uncertainty map
+- expected improvement map
+- expected information gain
+- top recommended experiments
+- predicted benefits of each experiment
+- laboratory completion status
+
+
+======================================================================
+9. MODELLING METHODOLOGY
+======================================================================
+
+9.1 Small-data strategy
+
+The current dataset is small. Therefore:
+
+1. Deep neural networks should not be used as the primary model.
+2. Simpler and uncertainty-aware models should be prioritised.
+3. Model complexity must be controlled.
+4. Cross-validation should be performed by mix, not by randomly splitting replicate rows.
+5. Extrapolation should be clearly flagged.
+6. Confidence intervals must accompany predictions.
+
+9.2 Candidate models
+
+Baseline models:
+- multiple linear regression
+- polynomial regression
+- ridge regression
+- lasso regression
+- elastic net
+- response surface methodology
+- partial least-squares regression
+
+Nonlinear models:
+- support-vector regression
+- random forest
+- gradient boosting
+- extra trees
+- generalised additive model
+
+Uncertainty-aware models:
+- Gaussian process regression
+- Bayesian ridge regression
+- bootstrap ensemble
+- quantile regression
+
+9.3 Recommended primary model
+
+Gaussian process regression should be evaluated as the primary model because it:
+
+- works relatively well with limited data,
+- provides mean prediction,
+- provides prediction variance,
+- supports uncertainty maps,
+- can be integrated with Bayesian optimisation and active learning.
+
+9.4 Model selection method
+
+For each target property:
+
+1. Define the candidate feature set.
+2. Standardise numerical inputs where needed.
+3. Apply leave-one-mix-out cross-validation.
+4. Calculate:
+   - RMSE,
+   - MAE,
+   - R2,
+   - adjusted R2 where applicable,
+   - MAPE only when values are safely away from zero,
+   - prediction-interval coverage,
+   - calibration error.
+5. Rank models.
+6. Check residual patterns.
+7. Select the simplest model that gives strong, stable performance.
+8. Save all model assumptions.
+
+9.5 Multi-output modelling
+
+Separate models should initially be developed for:
+
+- slump,
+- compressive strength,
+- splitting tensile strength,
+- flexural strength,
+- UPV,
+- rebound strength,
+- residual acid strength,
+- mass change.
+
+A multi-output model can be tested later, but separate models are easier to validate and explain.
+
+
+======================================================================
+10. NON-DESTRUCTIVE TEST FUSION
+======================================================================
+
+The NDT module can become a major contribution.
+
+10.1 Models to compare
+
+Model A:
+Composition-only strength prediction.
+
+Model B:
+UPV-only strength prediction.
+
+Model C:
+Rebound-only strength prediction.
+
+Model D:
+UPV + rebound prediction.
+
+Model E:
+Composition + curing + UPV + rebound prediction.
+
+10.2 Evaluation
+
+Compare:
+- RMSE
+- MAE
+- R2
+- prediction-interval width
+- robustness across mixes
+- sensitivity to missing NDT input
+
+10.3 Practical output
+
+The software should allow users to enter:
+
+- GGBS percentage,
+- curing age,
+- UPV,
+- rebound number or rebound-estimated strength.
+
+The system should return:
+
+- estimated compressive strength,
+- confidence interval,
+- concrete quality class,
+- anomaly warning,
+- nearest experimental matches.
+
+10.4 Optional spatial NDT map
+
+If original location-wise rebound and UPV readings are available, add:
+
+- specimen-face coordinate mapping,
+- surface hardness heatmap,
+- UPV path map,
+- combined damage probability map,
+- virtual 3D cube with interpolated integrity zones.
+
+Without coordinate-wise raw data, the software must not claim true internal tomography.
+
+
+======================================================================
+11. DURABILITY SIMULATION MODULE
+======================================================================
+
+11.1 Current supported inputs
+
+- mix composition
+- curing condition
+- acid type
+- acid concentration if fixed to available tests
+- exposure duration within validated range
+- initial strength
+- initial mass
+
+11.2 Current supported outputs
+
+- residual compressive strength
+- strength loss percentage
+- mass change percentage
+- durability score
+- relative acid resistance ranking
+
+11.3 Initial model types
+
+- regression model for residual strength
+- regression model for mass change
+- normalised durability index
+- probabilistic degradation model
+
+11.4 Proposed composite durability index
+
+A transparent, configurable index may combine:
+
+- retained compressive strength,
+- absolute mass change,
+- workability,
+- UPV,
+- original compressive strength.
+
+The index equation and weights must be visible to the user.
+A user-adjustable index may be provided, but the paper should use a predefined and justified formulation.
+
+11.5 Extension
+
+With additional time-series exposure data, develop:
+
+- degradation curves,
+- fitted kinetic parameters,
+- time-to-threshold prediction,
+- comparative acid severity,
+- uncertainty bands over exposure time.
+
+
+======================================================================
+12. MULTI-OBJECTIVE OPTIMISATION
+======================================================================
+
+12.1 Decision variables
+
+Initially:
+- FA percentage
+- GGBS percentage
+- AAS:B ratio
+- curing regime
+- curing age within available data
+
+After additional experiments:
+- SF percentage
+- NaOH molarity
+- activator ratio
+- superplasticiser dosage
+
+12.2 Objectives
+
+Possible objectives:
+
+Maximise:
+- compressive strength
+- splitting tensile strength
+- flexural strength
+- UPV
+- residual acid strength
+- workability within an acceptable range
+
+Minimise:
+- strength loss under H2SO4
+- strength loss under HCl
+- mass change
+- curing energy
+- estimated cost
+- estimated carbon footprint
+- model uncertainty
+
+12.3 Constraints
+
+Examples:
+- FA + GGBS + SF = 100%
+- SF within tested or permitted range
+- minimum slump
+- minimum compressive strength
+- minimum residual strength
+- maximum acid strength loss
+- composition restricted to experimentally supported domain
+
+12.4 Optimisation methods
+
+Compare:
+- weighted-sum optimisation
+- NSGA-II
+- NSGA-III if more objectives are used
+- Bayesian optimisation
+- desirability-function approach
+
+12.5 Required outputs
+
+- 2D Pareto front
+- 3D Pareto front
+- parallel-coordinate plot
+- objective trade-off table
+- recommended compromise solution
+- nearest tested mix
+- prediction uncertainty
+- reliability flag
+
+
+======================================================================
+13. INVERSE MIX DESIGN
+======================================================================
+
+The inverse design module should answer:
+
+“What geopolymer mix should be used to achieve a specified set of engineering targets?”
+
+13.1 Input examples
+
+- compressive strength at least 45 MPa
+- flexural strength at least 4 MPa
+- splitting tensile strength at least 3 MPa
+- slump at least 60 mm
+- H2SO4 strength loss below 10%
+- ambient curing preferred
+
+13.2 Output
+
+- recommended FA:GGBS:SF ratio
+- recommended AAS:B ratio
+- curing recommendation
+- predicted properties
+- uncertainty interval
+- feasibility status
+- reliability class
+- warnings
+- nearest available experimental mix
+- alternative Pareto-optimal solutions
+
+13.3 Reliability classes
+
+A:
+Inside dense experimental region with low uncertainty.
+
+B:
+Inside tested domain with moderate uncertainty.
+
+C:
+Near boundary of tested domain.
+
+D:
+Extrapolation; laboratory validation mandatory.
+
+
+======================================================================
+14. ANALYTICAL GRAPHS
+======================================================================
+
+The software should generate publication-quality graphs automatically.
+
+14.1 Basic plots
+
+- grouped bar charts
+- line plots
+- scatter plots
+- error-bar plots
+- box plots
+- violin plots where replicates exist
+- correlation matrix
+- pair plots
+
+14.2 Mechanical-property plots
+
+- strength versus GGBS percentage
+- strength versus curing age
+- ambient versus oven curing
+- compressive versus tensile strength
+- compressive versus flexural strength
+- workability versus strength
+- strength gain from 7 to 28 days
+
+14.3 Durability plots
+
+- initial versus residual strength
+- acid strength loss by mix
+- mass change by acid type
+- retained-strength ratio
+- durability ranking
+
+14.4 Model-validation plots
+
+- measured versus predicted
+- residual versus predicted
+- residual histogram
+- Q–Q plot
+- cross-validation fold results
+- learning curve
+- uncertainty calibration
+- model ranking
+
+14.5 Optimisation plots
+
+- Pareto front
+- trade-off surface
+- desirability plot
+- parallel-coordinate plot
+- radar plot for selected solutions
+- uncertainty-aware Pareto front
+
+14.6 Active-learning plots
+
+- prediction mean map
+- uncertainty map
+- expected-improvement map
+- selected next-experiment locations
+- model accuracy improvement after each new experiment
+
+
+======================================================================
+15. HEATMAPS AND 3D VISUALISATION
+======================================================================
+
+15.1 Response heatmaps
+
+Examples:
+- GGBS percentage × AAS:B ratio → compressive strength
+- GGBS percentage × curing condition → strength
+- mix × property → normalised performance
+- mix × acid type → residual strength
+- model × metric → performance comparison
+
+15.2 Three-dimensional response surface
+
+Primary example:
+- X-axis: GGBS percentage
+- Y-axis: AAS:B ratio
+- Z-axis: compressive strength
+- colour: uncertainty or strength
+
+Features:
+- rotate
+- zoom
+- hover values
+- display experimental points
+- display confidence surface
+- export high-resolution image
+
+15.3 Three-dimensional multi-property landscape
+
+Alternative surfaces:
+- strength surface
+- workability surface
+- acid-resistance surface
+- overall desirability surface
+- uncertainty surface
+
+15.4 Virtual 3D specimen
+
+Level 1:
+A conceptual 150 mm concrete cube coloured according to:
+- average UPV,
+- rebound strength,
+- durability score,
+- predicted damage index.
+
+Level 2:
+A surface heatmap based on coordinate-wise rebound readings.
+
+Level 3:
+A volumetric integrity model based on multiple UPV transmission paths.
+
+Scientific restriction:
+Level 2 or Level 3 must only be used if spatial raw data exist.
+Otherwise, the 3D cube must be labelled as a predicted or phenomenological visualisation.
+
+15.5 Recommended implementation
+
+- PyVistaQt for native 3D integration in PyQt6
+- Plotly for web-style interactive surfaces
+- Matplotlib for final journal figures
+
+
+======================================================================
+16. ACTIVE-LEARNING AND NEXT-EXPERIMENT RECOMMENDATION
+======================================================================
+
+16.1 Purpose
+
+The active-learning module should reduce the number of future experiments required.
+
+16.2 Candidate design region
+
+Suggested initial extension:
+- GGBS: approximately 60–85%
+- FA: corresponding balance
+- SF: initially fixed at 10%
+- AAS:B: approximately 0.35–0.45
+- ambient and selected oven curing
+
+A later phase may include:
+- SF at 5%, 10%, and 15%
+- NaOH molarity at 8, 10, and 12 M
+
+16.3 Selection criteria
+
+Recommend experiments using:
+
+- maximum predictive uncertainty
+- expected improvement
+- expected hypervolume improvement
+- diversity from existing samples
+- proximity to practical constraints
+- potential to improve the Pareto front
+
+16.4 Proposed workflow
+
+1. Train the initial digital twin.
+2. Generate candidate mix combinations.
+3. Predict all outputs and uncertainty.
+4. Rank candidates.
+5. Select 3–5 experiments per iteration.
+6. Conduct laboratory tests.
+7. Import measured results.
+8. Retrain the models.
+9. quantify reduction in prediction error.
+10. Repeat until improvement becomes small.
+
+16.5 Strong journal validation
+
+The study should demonstrate:
+
+- prediction accuracy before active learning,
+- recommended mixes,
+- experimental results of recommended mixes,
+- prediction accuracy after updating,
+- reduction in uncertainty,
+- performance improvement over existing mixes,
+- experimental-efficiency gain.
+
+
+======================================================================
+17. SUSTAINABILITY, COST, AND CARBON MODULE
+======================================================================
+
+This module should be included only when reliable inventory data are available.
+
+17.1 Inputs required
+
+- material unit cost
+- transport distance
+- electricity or thermal energy
+- emission factors for:
+  - fly ash processing,
+  - GGBS,
+  - silica fume,
+  - NaOH,
+  - sodium silicate,
+  - aggregates,
+  - curing.
+
+17.2 Outputs
+
+- estimated material cost per m3
+- estimated embodied carbon per m3
+- curing energy
+- strength-normalised carbon
+- durability-normalised carbon
+- cost-performance index
+
+17.3 Important restriction
+
+The software must not invent missing emission factors.
+Every factor must preserve its source, year, region, and uncertainty.
+
+
+======================================================================
+18. STATISTICAL ANALYSIS
+======================================================================
+
+18.1 Descriptive statistics
+
+For each property:
+- mean
+- median
+- standard deviation
+- coefficient of variation
+- minimum
+- maximum
+- confidence interval
+
+18.2 Inferential analysis
+
+Where sample size permits:
+- one-way ANOVA
+- two-way ANOVA
+- interaction analysis
+- post-hoc comparison
+- effect size
+- non-parametric alternatives
+
+18.3 Correlation analysis
+
+- Pearson correlation
+- Spearman correlation
+- partial correlation
+- correlation heatmap
+
+18.4 Sensitivity analysis
+
+- standardised regression coefficients
+- permutation importance
+- Sobol sensitivity after a validated surrogate model
+- SHAP analysis only when the model and sample size justify it
+
+18.5 Replicate handling
+
+Replicates must remain grouped.
+Random train-test splitting of specimens from the same mix into both training and validation sets
+must be avoided because it can produce optimistic accuracy.
+
+
+======================================================================
+19. SOFTWARE FOLDER STRUCTURE
+======================================================================
+
+gpc_dtwin/
+│
+├── app.py
+├── requirements.txt
+├── README.md
+├── LICENSE
+│
+├── gui/
+│   ├── main_window.py
+│   ├── dashboard_page.py
+│   ├── database_page.py
+│   ├── audit_page.py
+│   ├── modelling_page.py
+│   ├── optimisation_page.py
+│   ├── inverse_design_page.py
+│   ├── visualisation_3d_page.py
+│   ├── active_learning_page.py
+│   └── report_page.py
+│
+├── core/
+│   ├── data_models.py
+│   ├── validation.py
+│   ├── preprocessing.py
+│   ├── feature_engineering.py
+│   ├── statistics.py
+│   ├── modelling.py
+│   ├── uncertainty.py
+│   ├── ndt_fusion.py
+│   ├── durability.py
+│   ├── optimisation.py
+│   ├── inverse_design.py
+│   └── active_learning.py
+│
+├── database/
+│   ├── schema.sql
+│   ├── repository.py
+│   └── migrations/
+│
+├── visualisation/
+│   ├── plots_2d.py
+│   ├── heatmaps.py
+│   ├── response_surfaces.py
+│   ├── specimen_3d.py
+│   └── publication_export.py
+│
+├── reporting/
+│   ├── report_builder.py
+│   ├── table_export.py
+│   └── templates/
+│
+├── data/
+│   ├── raw/
+│   ├── verified/
+│   ├── processed/
+│   └── sample_projects/
+│
+├── models/
+│   ├── trained/
+│   └── metadata/
+│
+├── tests/
+│   ├── test_validation.py
+│   ├── test_models.py
+│   ├── test_optimisation.py
+│   ├── test_database.py
+│   └── test_gui.py
+│
+└── docs/
+    ├── methodology.txt
+    ├── user_manual.txt
+    └── validation_protocol.txt
+
+
+======================================================================
+20. DEVELOPMENT PHASES
+======================================================================
+
+PHASE 0: Research and data preparation
+Estimated duration: 2–4 weeks
+
+Tasks:
+- audit the manuscript and experimental tables
+- obtain raw specimen-level records
+- resolve composition inconsistencies
+- define final variable names and units
+- prepare a verified master dataset
+- document missing information
+
+Deliverables:
+- verified CSV/Excel dataset
+- data dictionary
+- discrepancy log
+- modelling eligibility report
+
+
+PHASE 1: Minimum viable scientific application
+Estimated duration: 3–5 weeks
+
+Tasks:
+- create PyQt6 main window
+- implement project creation
+- implement CSV/Excel import
+- implement SQLite storage
+- implement data table
+- implement validation warnings
+- implement basic plots
+
+Deliverables:
+- operational desktop application
+- experimental data browser
+- 2D analytical dashboard
+
+
+PHASE 2: Statistical analysis and baseline modelling
+Estimated duration: 4–6 weeks
+
+Tasks:
+- descriptive statistics
+- correlation analysis
+- ANOVA where supported
+- baseline regressions
+- cross-validation
+- model metrics
+- measured-versus-predicted plots
+
+Deliverables:
+- statistical analysis module
+- baseline prediction module
+- model comparison report
+
+
+PHASE 3: Uncertainty-aware digital twin
+Estimated duration: 4–6 weeks
+
+Tasks:
+- Gaussian process regression
+- bootstrap uncertainty
+- confidence intervals
+- prediction reliability classes
+- interpolation/extrapolation detection
+- uncertainty heatmaps
+
+Deliverables:
+- digital twin version 1
+- uncertainty-aware predictions
+- reliability report
+
+
+PHASE 4: 3D response visualisation
+Estimated duration: 3–5 weeks
+
+Tasks:
+- PyVista or Plotly integration
+- 3D response surfaces
+- experimental-point overlays
+- uncertainty surfaces
+- virtual specimen prototype
+- high-resolution export
+
+Deliverables:
+- interactive 3D viewer
+- publication-ready 3D figures
+
+
+PHASE 5: NDT fusion and durability simulation
+Estimated duration: 4–6 weeks
+
+Tasks:
+- UPV-strength models
+- rebound-strength models
+- combined NDT models
+- acid residual-strength models
+- mass-change models
+- durability index
+
+Deliverables:
+- NDT fusion module
+- durability prediction module
+- comparative model study
+
+
+PHASE 6: Multi-objective optimisation and inverse design
+Estimated duration: 5–7 weeks
+
+Tasks:
+- define optimisation variables
+- define engineering constraints
+- implement NSGA-II
+- implement Bayesian optimisation
+- generate Pareto fronts
+- implement inverse design
+- reliability warnings
+
+Deliverables:
+- optimiser
+- inverse mix-design tool
+- Pareto analysis report
+
+
+PHASE 7: Active learning and laboratory validation
+Estimated duration: depends on laboratory schedule
+
+Tasks:
+- generate candidate mixes
+- recommend next experiments
+- perform selected experiments
+- import new measurements
+- retrain models
+- quantify accuracy improvement
+
+Deliverables:
+- experimentally validated recommendations
+- updated digital twin
+- active-learning effectiveness analysis
+
+
+PHASE 8: Software validation and packaging
+Estimated duration: 3–5 weeks
+
+Tasks:
+- unit tests
+- GUI tests
+- data-validation tests
+- reproducibility tests
+- installer creation
+- user manual
+- sample project
+
+Deliverables:
+- packaged Windows application
+- source code
+- validation report
+- user manual
+
+
+PHASE 9: Journal manuscript preparation
+Estimated duration: 4–6 weeks
+
+Tasks:
+- finalise novelty statement
+- prepare methodology
+- prepare experimental validation
+- produce figures and tables
+- perform ablation study
+- compare with baseline methods
+- write limitations
+- prepare supplementary material
+
+Deliverables:
+- complete manuscript
+- graphical abstract
+- supplementary dataset
+- software workflow diagram
+- reproducibility package
+
+
+======================================================================
+21. PROPOSED TIMELINE
+======================================================================
+
+A realistic research and software timeline is approximately 8–12 months.
+
+Month 1:
+- source audit
+- raw-data collection
+- verified dataset
+- database design
+
+Month 2:
+- PyQt6 foundation
+- data import
+- database page
+- basic plotting
+
+Month 3:
+- statistics
+- baseline models
+- model validation
+
+Month 4:
+- Gaussian process digital twin
+- uncertainty estimation
+- reliability classes
+
+Month 5:
+- heatmaps
+- 3D response surfaces
+- virtual specimen prototype
+
+Month 6:
+- NDT fusion
+- durability modelling
+
+Month 7:
+- multi-objective optimisation
+- inverse design
+
+Month 8:
+- active-learning recommendation
+- select new mixes
+
+Months 9–10:
+- laboratory testing
+- model update
+- comparative validation
+
+Month 11:
+- software testing
+- packaging
+- documentation
+
+Month 12:
+- journal manuscript
+- supplementary files
+- final revisions
+
+
+======================================================================
+22. VALIDATION PLAN
+======================================================================
+
+22.1 Data validation
+
+- composition sum checks
+- unit checks
+- duplicate checks
+- replicate checks
+- source traceability
+- missing-value checks
+
+22.2 Model validation
+
+- leave-one-mix-out cross-validation
+- nested cross-validation where possible
+- bootstrap confidence intervals
+- comparison with simple baselines
+- residual analysis
+- uncertainty calibration
+
+22.3 Optimisation validation
+
+- compare predicted optimum with nearest tested mix
+- laboratory test selected optimum
+- test at least one high-uncertainty recommendation
+- compare predicted and measured properties
+- report success and failure openly
+
+22.4 Software validation
+
+- deterministic result checks
+- database transaction tests
+- import/export tests
+- invalid-input tests
+- GUI responsiveness
+- report consistency
+- plot reproducibility
+
+22.5 Reproducibility
+
+Every result must store:
+- software version
+- model version
+- dataset version
+- random seed
+- algorithm settings
+- date and time
+- user-selected constraints
+
+
+======================================================================
+23. ABLATION AND COMPARATIVE STUDIES
+======================================================================
+
+A strong journal paper should include ablation studies.
+
+Study 1:
+Model without uncertainty versus model with uncertainty.
+
+Study 2:
+Composition-only prediction versus composition + curing.
+
+Study 3:
+UPV-only versus rebound-only versus combined NDT.
+
+Study 4:
+Single-objective strength optimisation versus multi-objective optimisation.
+
+Study 5:
+Random selection of new experiments versus active-learning selection.
+
+Study 6:
+Model before laboratory update versus model after laboratory update.
+
+Study 7:
+Weighted-sum optimisation versus NSGA-II versus Bayesian optimisation.
+
+These studies will demonstrate which components provide measurable scientific value.
+
+
+======================================================================
+24. JOURNAL MANUSCRIPT STRUCTURE
+======================================================================
+
+Proposed title:
+
+“An Uncertainty-Aware Digital Twin and Active-Learning Framework for Multi-Objective Design of
+Fly Ash–GGBS–Silica Fume Geopolymer Concrete”
+
+Alternative title:
+
+“Experiment-Calibrated Digital Twin and Inverse Mix Design of Geopolymer Concrete Using
+Multi-Objective Optimisation and Non-Destructive-Test Fusion”
+
+Suggested sections:
+
+1. Introduction
+2. Research gap and contribution
+3. Experimental programme
+4. Data verification and preprocessing
+5. Digital-twin architecture
+6. Prediction and uncertainty methodology
+7. NDT fusion method
+8. Multi-objective optimisation
+9. Inverse design
+10. Active-learning strategy
+11. Software architecture
+12. Results
+13. Experimental validation of recommended mixes
+14. Ablation and comparative analysis
+15. Practical implications
+16. Limitations
+17. Conclusions
+
+Proposed major figures:
+
+1. Complete digital-twin architecture.
+2. Experimental design and data flow.
+3. PyQt6 software interface.
+4. 3D strength response surface.
+5. Multi-property heatmap.
+6. Model comparison.
+7. Measured versus predicted plots.
+8. NDT fusion comparison.
+9. Durability response surface.
+10. Pareto front.
+11. Inverse mix-design result.
+12. Active-learning uncertainty map.
+13. Experimental validation of recommended mixes.
+14. Virtual 3D specimen.
+
+
+======================================================================
+25. ACCEPTANCE CRITERIA
+======================================================================
+
+The software should be considered research-ready only when:
+
+1. All modelled data have verified source traceability.
+2. Conflicting values are resolved or excluded.
+3. The software distinguishes measured, interpolated, and extrapolated results.
+4. Prediction uncertainty is visible.
+5. Cross-validation results are stored and reproducible.
+6. At least three baseline models are compared.
+7. The selected model is not chosen only from training accuracy.
+8. Multi-objective results include a Pareto front.
+9. Inverse-design outputs include a reliability class.
+10. At least one optimiser-recommended mix is laboratory-tested.
+11. At least one high-uncertainty candidate is tested.
+12. The model update after new experiments is quantified.
+13. Figures can be exported in publication quality.
+14. A complete software validation report is available.
+15. Limitations are explicitly stated.
+
+
+======================================================================
+26. MAJOR RISKS AND MITIGATION
+======================================================================
+
+Risk 1:
+Insufficient number of independent mix designs.
+
+Mitigation:
+- use small-data models,
+- use uncertainty estimation,
+- collect additional targeted experiments,
+- avoid overclaiming generalisation.
+
+Risk 2:
+Conflicting source data.
+
+Mitigation:
+- create formal discrepancy log,
+- obtain raw laboratory sheets,
+- exclude unresolved values.
+
+Risk 3:
+Overfitting.
+
+Mitigation:
+- leave-one-mix-out validation,
+- regularisation,
+- simpler models,
+- nested model selection,
+- independent laboratory validation.
+
+Risk 4:
+3D graphics become decorative rather than scientific.
+
+Mitigation:
+- link every surface to a validated model,
+- show experimental points,
+- show uncertainty,
+- label conceptual damage maps clearly.
+
+Risk 5:
+GUI development consumes time without improving research contribution.
+
+Mitigation:
+- develop the scientific core first,
+- keep UI modular,
+- prioritise validation and optimisation.
+
+Risk 6:
+Unsupported carbon or cost claims.
+
+Mitigation:
+- use traceable inventory data only,
+- show uncertainty,
+- keep the module optional until data are available.
+
+Risk 7:
+Use of machine learning appears artificial.
+
+Mitigation:
+- compare against response-surface and statistical baselines,
+- justify model choice,
+- show interpretability,
+- demonstrate experimental value.
+
+
+======================================================================
+27. MINIMUM, STRONG, AND IDEAL VERSIONS
+======================================================================
+
+27.1 Minimum publishable version
+
+- verified experimental database
+- PyQt6 analytical interface
+- statistical analysis
+- baseline prediction
+- uncertainty intervals
+- 2D and 3D response surfaces
+- multi-objective optimisation
+- clear limitations
+
+27.2 Strong journal version
+
+All minimum features plus:
+- NDT fusion
+- inverse design
+- model comparison
+- ablation study
+- experimental validation of optimised mixes
+
+27.3 Ideal transaction-level version
+
+All strong-version features plus:
+- active-learning experiment recommendation
+- iterative model update
+- uncertainty reduction analysis
+- sustainability objective
+- spatial NDT heatmap or virtual specimen based on raw coordinate data
+- complete reproducibility package
+
+
+======================================================================
+28. IMMEDIATE NEXT ACTIONS
+======================================================================
+
+Step 1:
+Prepare a master Excel or CSV file containing all source tables.
+
+Step 2:
+Create a discrepancy list for every conflicting composition, strength, dimension, and standard.
+
+Step 3:
+Collect raw specimen-level values, including replicate readings and standard deviations.
+
+Step 4:
+Confirm whether coordinate-wise UPV and rebound readings are available.
+
+Step 5:
+Freeze the verified dataset as Version 1.0.
+
+Step 6:
+Develop the PyQt6 project shell and SQLite schema.
+
+Step 7:
+Implement the data audit module before predictive modelling.
+
+Step 8:
+Build response-surface and Gaussian-process prototypes outside the GUI.
+
+Step 9:
+Validate the models using leave-one-mix-out cross-validation.
+
+Step 10:
+Integrate the validated models into the PyQt6 application.
+
+Step 11:
+Implement heatmaps, 3D surfaces, and uncertainty maps.
+
+Step 12:
+Implement multi-objective optimisation and inverse design.
+
+Step 13:
+Use active learning to select a small number of new experimental mixes.
+
+Step 14:
+Conduct laboratory validation.
+
+Step 15:
+Update the model, package the software, and prepare the manuscript.
+
+
+======================================================================
+29. FINAL RECOMMENDATION
+======================================================================
+
+The project is feasible and has the potential to transform the existing experimental article into a
+substantially stronger computational–experimental contribution. The final work should not be presented
+as a simple “simulation software” or “AI-based GUI.” It should be presented as an experimentally
+calibrated, uncertainty-aware digital twin and inverse-design framework.
+
+The strongest publication route is:
+
+Experimental data
++ verified database
++ uncertainty-aware prediction
++ NDT fusion
++ multi-objective optimisation
++ inverse mix design
++ active-learning-guided new experiments
++ laboratory validation
++ interactive PyQt6 implementation.
+
+The final scientific claim should remain limited to the experimentally supported domain unless new
+experiments or a carefully curated external dataset are added.
+
+
+======================================================================
+30. SOURCE BASIS
+======================================================================
+
+This plan is based on the uploaded journal manuscript:
+“Effect of Geopolymer Binders on Mechanical Properties and Durability of Geopolymer Concrete”
+
+and the uploaded experimental result tables containing:
+- material constituents,
+- mix proportions,
+- workability,
+- compressive strength,
+- splitting tensile strength,
+- flexural strength,
+- ultrasonic pulse velocity,
+- rebound hammer results,
+- acid durability results.
+
+Any unresolved inconsistency identified in this plan must be confirmed from the original laboratory
+records before model development.
