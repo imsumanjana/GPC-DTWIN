@@ -25,6 +25,7 @@ from gpc_dtwin.services.active_learning_service import (
     UpdateComparisonResult,
 )
 from gpc_dtwin.ui.models import DataFrameModel
+from gpc_dtwin.ui.figure_tabs import FigureTabs
 from gpc_dtwin.ui.widgets import SectionHeader, ValuePill
 
 
@@ -38,12 +39,8 @@ class ActiveLearningPage(QWidget):
         self.figures: dict[str, Figure] = {}
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 22, 24, 24)
+        root.setContentsMargins(24, 16, 24, 24)
         root.setSpacing(14)
-        root.addWidget(SectionHeader(
-            "Active Learning",
-            "Prioritize informative material experiments, prepare laboratory plans, and quantify model changes after completed tests.",
-        ))
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self._recommendation_tab(), "Experiment recommendations")
@@ -255,11 +252,8 @@ class ActiveLearningPage(QWidget):
 
         profile_widget = QWidget()
         profile_layout = QVBoxLayout(profile_widget)
-        self.profile_canvas = FigureCanvasQTAgg(
-            Figure(figsize=(7, 7), constrained_layout=True)
-        )
-        self.profile_canvas.setMinimumSize(620, 620)
-        profile_layout.addWidget(self.profile_canvas)
+        self.profile_figure_tabs = FigureTabs(minimum_canvas_size=(620, 560))
+        profile_layout.addWidget(self.profile_figure_tabs)
         self.result_tabs.addTab(profile_widget, "Priority profile")
 
         surrogate_widget = QWidget()
@@ -538,9 +532,9 @@ class ActiveLearningPage(QWidget):
         self.y_axis_combo.blockSignals(False)
         self.refresh_acquisition_figure()
 
-        profile = self.service.recommendation_figure(run)
-        self.figures["profile"] = profile
-        self.profile_canvas = self._replace_canvas(self.profile_canvas, profile)
+        profile_figures = self.service.recommendation_figures(run)
+        self.figures["profile"] = next(iter(profile_figures.values()))
+        self.profile_figure_tabs.set_figures(profile_figures)
         self.tabs.setCurrentIndex(0)
 
     def refresh_acquisition_figure(self) -> None:
@@ -614,8 +608,12 @@ class ActiveLearningPage(QWidget):
 
     def export_active_figure(self) -> None:
         key = "acquisition" if self.result_tabs.currentIndex() == 1 else "profile"
+        figure = (
+            self.profile_figure_tabs.current_figure()
+            if key == "profile" else self.figures.get(key)
+        )
         self._export_figure(
-            self.figures.get(key),
+            figure,
             "GPC_DTwin_Active_Learning_Acquisition.png"
             if key == "acquisition" else "GPC_DTwin_Active_Learning_Profile.png",
         )

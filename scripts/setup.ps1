@@ -82,9 +82,26 @@ Write-Host "[GPC-DTwin] Updating packaging tools..." -ForegroundColor Cyan
 & $VenvPython -m pip install --upgrade pip setuptools wheel
 if ($LASTEXITCODE -ne 0) { throw "Packaging-tool update failed." }
 
-Write-Host "[GPC-DTwin] Installing application dependencies..." -ForegroundColor Cyan
-& $VenvPython -m pip install -e ".[dev]"
-if ($LASTEXITCODE -ne 0) { throw "Dependency installation failed." }
+Write-Host "[GPC-DTwin] Installing pinned release dependencies..." -ForegroundColor Cyan
+& $VenvPython -m pip install -r ./requirements-lock.txt
+if ($LASTEXITCODE -ne 0) { throw "Pinned dependency installation failed." }
+
+Write-Host "[GPC-DTwin] Installing the local application package..." -ForegroundColor Cyan
+& $VenvPython -m pip install --no-deps -e .
+if ($LASTEXITCODE -ne 0) { throw "Local application installation failed." }
+
+Write-Host "[GPC-DTwin] Verifying the Qt wrapper and runtime..." -ForegroundColor Cyan
+$QtProbe = "from PyQt6.QtCore import PYQT_VERSION_STR, QT_VERSION_STR, qVersion; print(f'PyQt {PYQT_VERSION_STR}; compiled Qt {QT_VERSION_STR}; runtime Qt {qVersion()}'); raise SystemExit(0 if QT_VERSION_STR == qVersion() else 2)"
+& $VenvPython -c $QtProbe
+if ($LASTEXITCODE -ne 0) { throw "The compiled and runtime Qt versions do not match." }
+
+$env:PYTHONFAULTHANDLER = "1"
+$env:QT_OPENGL = "software"
+$env:QT_QUICK_BACKEND = "software"
+$env:OMP_NUM_THREADS = "1"
+$env:OPENBLAS_NUM_THREADS = "1"
+$env:MKL_NUM_THREADS = "1"
+$env:NUMEXPR_NUM_THREADS = "1"
 
 Write-Host "[GPC-DTwin] Running service tests..." -ForegroundColor Cyan
 & $VenvPython -m pytest -m "not gui" --basetemp="$PytestTemp"

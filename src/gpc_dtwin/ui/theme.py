@@ -75,9 +75,16 @@ def stylesheet(theme: str = "dark") -> str:
     QCheckBox {{ spacing: 8px; }}
     QHeaderView::section {{ background: {colors['panel2']}; border: 0; border-right: 1px solid {colors['border']}; border-bottom: 1px solid {colors['border']}; padding: 8px; font-weight: 650; }}
 
-    QTabWidget::pane {{ border: 1px solid {colors['border']}; border-radius: 10px; background: {colors['panel']}; top: -1px; }}
-    QTabBar::tab {{ background: {colors['panel2']}; border: 1px solid {colors['border']}; padding: 9px 16px; margin-right: 4px; border-top-left-radius: 8px; border-top-right-radius: 8px; }}
-    QTabBar::tab:selected {{ background: {colors['panel']}; color: {colors['accent']}; border-bottom-color: {colors['panel']}; }}
+    QTabWidget {{ border: 0; background: transparent; }}
+    QTabWidget::pane {{ border: 1px solid {colors['border']}; border-top: 0; border-bottom-left-radius: 10px; border-bottom-right-radius: 10px; background: {colors['panel']}; top: -1px; }}
+    QTabBar {{ border: 0; border-bottom: 1px solid {colors['border']}; background: transparent; }}
+    QTabBar::tab {{ background: {colors['panel2']}; border: 1px solid {colors['border']}; border-bottom: 0; padding: 9px 16px; margin-right: 4px; margin-bottom: -1px; border-top-left-radius: 8px; border-top-right-radius: 8px; }}
+    QTabBar::tab:selected {{ background: {colors['panel']}; color: {colors['accent']}; border-bottom: 2px solid {colors['accent']}; }}
+    QToolButton#ChartStyleButton {{ background: {colors['panel']}; border: 1px solid {colors['accent']}; border-radius: 8px; padding: 3px; font-size: 12pt; }}
+    QToolButton#ChartStyleButton:hover {{ background: {colors['accent']}; }}
+    QToolButton#FigureActionButton {{ background: {colors['panel2']}; border: 1px solid {colors['border']}; border-radius: 7px; padding: 3px; font-weight: 700; }}
+    QToolButton#FigureActionButton:hover {{ background: {colors['selection']}; border-color: {colors['accent']}; }}
+    QComboBox#PresetCombo {{ min-width: 210px; }}
 
     QScrollArea {{ border: 0; background: transparent; }}
     QScrollBar:vertical {{ background: transparent; width: 12px; margin: 2px; }}

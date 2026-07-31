@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QVBoxLayout, QWidget
 
 from gpc_dtwin.services.analytics_service import AnalyticsService
 from gpc_dtwin.services.audit_service import AuditService
-from gpc_dtwin.ui.widgets import ChartCard, MetricCard, SectionHeader
+from gpc_dtwin.ui.widgets import ChartCard, MetricCard
 
 
 class OverviewPage(QWidget):
@@ -15,12 +15,8 @@ class OverviewPage(QWidget):
         self.analytics = AnalyticsService()
 
         self.root = QVBoxLayout(self)
-        self.root.setContentsMargins(24, 22, 24, 24)
+        self.root.setContentsMargins(24, 16, 24, 24)
         self.root.setSpacing(16)
-        self.root.addWidget(SectionHeader(
-            "Dataset overview",
-            "A concise view of records, test coverage, quality status, and material performance."
-        ))
 
         cards = QGridLayout()
         cards.setHorizontalSpacing(12)

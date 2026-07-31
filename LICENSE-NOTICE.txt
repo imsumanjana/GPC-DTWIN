@@ -1,4 +1,4 @@
-GPC-DTwin v1.0.1
+GPC-DTwin v1.1.1
 
 Copyright © 2026 Dr. Suman Jana. All rights reserved.
 ORCID: https://orcid.org/0000-0002-9850-2169

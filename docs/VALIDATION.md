@@ -23,7 +23,7 @@ The automated checks cover:
 - square 600 dpi figure export,
 - report generation and dataset fingerprinting,
 - reproducibility-bundle creation and integrity verification,
-- thirteen scrollable workspaces,
+- ten scrollable primary workspaces plus four Data Explorer tabs,
 - adaptive navigation at common window sizes,
 - readable button sizing and interface screenshot capture.
 
@@ -38,7 +38,7 @@ For final release verification:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\release_check.ps1
 ```
-## Version 1.0.1 regression checks
+## Version 1.1.1 regression checks
 
 The suite verifies that active-learning plan response fields accept numeric values under pandas 3.x and that SQLite backup restoration succeeds on Windows without replacing an open database file.
 

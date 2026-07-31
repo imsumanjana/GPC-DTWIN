@@ -17,7 +17,6 @@ from gpc_dtwin.paths import (
     EXPORT_DIR, INSTALL_ROOT, LOG_DIR, MODEL_DIR, NDT_DIR, OPTIMIZATION_DIR,
     REFERENCE_DATASET, REPORT_DIR, TEMPLATE_DATASET, TWIN_DIR,
 )
-from gpc_dtwin.ui.widgets import SectionHeader
 
 
 class SettingsPage(QWidget):
@@ -29,11 +28,8 @@ class SettingsPage(QWidget):
         self.context = context
         self.settings = QSettings(ORGANIZATION_NAME, SETTINGS_APPLICATION)
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 22, 24, 24)
+        root.setContentsMargins(24, 16, 24, 24)
         root.setSpacing(14)
-        root.addWidget(SectionHeader(
-            "Settings", "Appearance, storage locations, attribution, and local application checks."
-        ))
 
         appearance = QFrame()
         appearance.setObjectName("Card")

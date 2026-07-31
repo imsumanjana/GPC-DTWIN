@@ -41,12 +41,8 @@ class NDTDurabilityPage(QWidget):
         self.sweep_data = pd.DataFrame()
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 22, 24, 24)
+        root.setContentsMargins(24, 16, 24, 24)
         root.setSpacing(14)
-        root.addWidget(SectionHeader(
-            "NDT and durability",
-            "Fuse non-destructive indicators with reference strength and evaluate exposure performance."
-        ))
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self._ndt_fusion_tab(), "NDT fusion")

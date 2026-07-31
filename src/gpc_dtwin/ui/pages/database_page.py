@@ -9,7 +9,6 @@ from PyQt6.QtWidgets import (
 from gpc_dtwin.columns import ESSENTIAL_COLUMNS, VERIFICATION_STATES
 from gpc_dtwin.services.data_service import DataService
 from gpc_dtwin.ui.models import DataFrameModel
-from gpc_dtwin.ui.widgets import SectionHeader
 
 
 class RecordFilterProxy(QSortFilterProxyModel):
@@ -52,12 +51,8 @@ class DatabasePage(QWidget):
         super().__init__(parent)
         self.context = context
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 22, 24, 24)
+        root.setContentsMargins(24, 16, 24, 24)
         root.setSpacing(14)
-        root.addWidget(SectionHeader(
-            "Data explorer",
-            "Search, filter, review, and export the active material-test dataset."
-        ))
 
         controls = QFrame()
         controls.setObjectName("Card")

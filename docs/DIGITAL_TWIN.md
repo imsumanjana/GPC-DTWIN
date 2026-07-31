@@ -28,8 +28,16 @@ uncertainty. Reliability classes are decision-support indicators and do not repl
 ## Response maps
 
 Response maps vary two numeric predictors across their fitted ranges while holding all other
-predictors at fitted default values. The map presents estimated response, relative uncertainty, and
-reliability class.
+predictors at fitted default values. Estimated response, relative uncertainty, and reliability are
+presented in separate tabs.
+
+The on-screen response-map host is a fixed square 720 × 720 pixels. It is not stretched to fill a
+rectangular viewport. When the available space is smaller, horizontal and vertical scrollbars appear.
+Exports remain square at 6 × 6 inches and 600 dpi.
+
+The map engine stores explicit row and column coordinates before reshaping predictions. It supports
+up to 100 × 100 grids and falls back to a one-dimensional response curve when only one suitable
+numeric predictor varies.
 
 ## Twin library
 

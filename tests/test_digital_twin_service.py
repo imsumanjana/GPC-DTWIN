@@ -75,3 +75,42 @@ def test_twin_artifact_round_trip(tmp_path: Path):
     service.delete_artifact(path)
     assert not path.exists()
     assert not path.with_suffix(".json").exists()
+
+
+def test_response_map_100_by_100_has_explicit_grid_shape():
+    _, service, result = _build_result()
+    surface = service.response_map(
+        result.artifact, "ggbs_percent_numeric", "aas_b_ratio", resolution=100
+    )
+    assert len(surface) == 10_000
+    assert surface["grid_row"].nunique() == 100
+    assert surface["grid_column"].nunique() == 100
+    assert surface.attrs["grid_shape"] == (100, 100)
+    figures = service.response_map_figures(
+        surface, "ggbs_percent_numeric", "aas_b_ratio", "Compressive strength (MPa)"
+    )
+    assert set(figures) == {"Estimated response", "Relative uncertainty", "Reliability"}
+    assert all(len(figure.axes) >= 2 for figure in figures.values())
+    assert all(tuple(round(value, 3) for value in figure.get_size_inches()) == (6.0, 6.0) for figure in figures.values())
+
+
+def test_constant_numeric_range_is_not_offered_as_map_axis():
+    import copy
+    import pytest
+
+    _, service, result = _build_result()
+    artifact = copy.deepcopy(result.artifact)
+    artifact["metadata"]["numeric_training_ranges"]["mechanical_test_age_days"] = [28.0, 28.0]
+    candidates = service.map_axis_candidates(artifact)
+    assert "mechanical_test_age_days" not in candidates
+    with pytest.raises(ValueError, match="usable two-dimensional range"):
+        service.response_map(
+            artifact, "ggbs_percent_numeric", "mechanical_test_age_days", resolution=100
+        )
+
+
+def test_calibration_outputs_are_separate_tab_ready_figures():
+    _, service, result = _build_result()
+    figures = service.calibration_figures(result)
+    assert set(figures) == {"Prediction intervals", "Error & uncertainty", "Coverage"}
+    assert all(len(figure.axes) == 1 for figure in figures.values())

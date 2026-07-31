@@ -29,6 +29,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from gpc_dtwin import __version__
+from gpc_dtwin.chart_style import apply_chart_style
 from gpc_dtwin.columns import COLUMN_LABELS, MODEL_NUMERIC_PREDICTORS
 
 
@@ -177,7 +178,7 @@ class DigitalTwinService:
                 max_features=0.85,
                 bootstrap=True,
                 random_state=42,
-                n_jobs=-1,
+                n_jobs=1,
             )
         raise ValueError(f"Unsupported twin method: {method}")
 
@@ -503,6 +504,22 @@ class DigitalTwinService:
         row = cls.predict_dataframe(artifact, frame).iloc[0]
         return row.to_dict()
 
+    @staticmethod
+    def map_axis_candidates(artifact: dict[str, Any]) -> list[str]:
+        """Return numeric predictors with a finite, non-zero fitted range."""
+        DigitalTwinService._validate_artifact(artifact)
+        metadata = artifact["metadata"]
+        ranges = metadata.get("numeric_training_ranges", {})
+        candidates: list[str] = []
+        for column in metadata.get("predictors", []):
+            limits = ranges.get(column)
+            if not isinstance(limits, (list, tuple)) or len(limits) != 2:
+                continue
+            low, high = float(limits[0]), float(limits[1])
+            if np.isfinite(low) and np.isfinite(high) and high - low > 1e-12:
+                candidates.append(column)
+        return candidates
+
     @classmethod
     def response_map(
         cls,
@@ -515,115 +532,295 @@ class DigitalTwinService:
         metadata = artifact["metadata"]
         predictors = list(metadata["predictors"])
         numeric_ranges = metadata.get("numeric_training_ranges", {})
+        candidates = cls.map_axis_candidates(artifact)
         if x_field == y_field:
-            raise ValueError("Select two different map axes.")
+            raise ValueError("Select two different response-map axes.")
         if x_field not in predictors or y_field not in predictors:
-            raise ValueError("Both map axes must be predictors used by the active twin.")
+            raise ValueError("Both response-map axes must be predictors used by the active twin.")
         if x_field not in numeric_ranges or y_field not in numeric_ranges:
             raise ValueError("Response maps require numeric predictors with fitted ranges.")
+        if x_field not in candidates or y_field not in candidates:
+            raise ValueError(
+                "The selected variables do not span a usable two-dimensional range. "
+                "Choose predictors that vary in the fitted data, or use a one-dimensional response curve."
+            )
         resolution = int(np.clip(resolution, 15, 100))
-        x_values = np.linspace(*numeric_ranges[x_field], resolution)
-        y_values = np.linspace(*numeric_ranges[y_field], resolution)
-        grid_x, grid_y = np.meshgrid(x_values, y_values)
+        x_low, x_high = map(float, numeric_ranges[x_field])
+        y_low, y_high = map(float, numeric_ranges[y_field])
+        x_values = np.linspace(x_low, x_high, resolution, dtype=float)
+        y_values = np.linspace(y_low, y_high, resolution, dtype=float)
+        grid_x, grid_y = np.meshgrid(x_values, y_values, indexing="xy")
         defaults = metadata.get("input_defaults", {})
         rows: list[dict[str, Any]] = []
-        for x_value, y_value in zip(grid_x.ravel(), grid_y.ravel()):
-            row = {column: defaults.get(column) for column in predictors}
-            row[x_field] = float(x_value)
-            row[y_field] = float(y_value)
-            rows.append(row)
-        frame = pd.DataFrame(rows)
+        for row_index in range(resolution):
+            for column_index in range(resolution):
+                row = {column: defaults.get(column) for column in predictors}
+                row[x_field] = float(grid_x[row_index, column_index])
+                row[y_field] = float(grid_y[row_index, column_index])
+                rows.append(row)
+        frame = pd.DataFrame(rows, columns=predictors)
         predictions = cls.predict_dataframe(artifact, frame)
-        predictions.insert(0, y_field, grid_y.ravel())
-        predictions.insert(0, x_field, grid_x.ravel())
+        # Explicit grid coordinates prevent reconstruction from unique values and
+        # therefore avoid shape failures when a field is nearly constant.
+        predictions.insert(0, "grid_column", np.tile(np.arange(resolution), resolution))
+        predictions.insert(0, "grid_row", np.repeat(np.arange(resolution), resolution))
+        predictions.insert(0, y_field, grid_y.ravel(order="C"))
+        predictions.insert(0, x_field, grid_x.ravel(order="C"))
+        predictions.attrs["grid_shape"] = (resolution, resolution)
+        predictions.attrs["x_field"] = x_field
+        predictions.attrs["y_field"] = y_field
+        return predictions
+
+    @classmethod
+    def response_curve(
+        cls,
+        artifact: dict[str, Any],
+        field: str,
+        resolution: int = 100,
+    ) -> pd.DataFrame:
+        """Generate a one-dimensional response curve for one varying predictor."""
+        cls._validate_artifact(artifact)
+        metadata = artifact["metadata"]
+        if field not in cls.map_axis_candidates(artifact):
+            raise ValueError("The selected predictor does not have a usable fitted range.")
+        resolution = int(np.clip(resolution, 15, 200))
+        low, high = map(float, metadata["numeric_training_ranges"][field])
+        values = np.linspace(low, high, resolution, dtype=float)
+        defaults = metadata.get("input_defaults", {})
+        predictors = list(metadata["predictors"])
+        frame = pd.DataFrame([
+            {**{column: defaults.get(column) for column in predictors}, field: float(value)}
+            for value in values
+        ], columns=predictors)
+        predictions = cls.predict_dataframe(artifact, frame)
+        predictions.insert(0, field, values)
+        predictions.attrs["curve_field"] = field
         return predictions
 
     @staticmethod
-    def calibration_figure(result: TwinBuildResult) -> Figure:
-        table = result.calibration
-        figure = Figure(figsize=(10.5, 4.8), constrained_layout=True)
-        fit_axis = figure.add_subplot(131)
-        residual_axis = figure.add_subplot(132)
-        calibration_axis = figure.add_subplot(133)
+    def _single_figure(title: str) -> tuple[Figure, Any]:
+        figure = Figure(figsize=(6.0, 6.0), constrained_layout=True)
+        axis = figure.add_subplot(111)
+        axis.set_title(title)
+        return figure, axis
 
+    @classmethod
+    def calibration_figures(cls, result: TwinBuildResult) -> dict[str, Figure]:
+        table = result.calibration
         observed = table["observed_response"].to_numpy(dtype=float)
         predicted = table["predicted_mean"].to_numpy(dtype=float)
         lower = table["lower_bound"].to_numpy(dtype=float)
         upper = table["upper_bound"].to_numpy(dtype=float)
         residual = table["residual"].to_numpy(dtype=float)
         std = table["prediction_std"].to_numpy(dtype=float)
+
+        interval_figure, fit_axis = cls._single_figure("Prediction intervals")
         yerr = np.vstack([predicted - lower, upper - predicted])
-        fit_axis.errorbar(observed, predicted, yerr=yerr, fmt="o", alpha=0.75, capsize=2)
+        fit_axis.errorbar(
+            observed, predicted, yerr=yerr, fmt="o", alpha=0.75, capsize=2,
+            label="Cross-validated estimate ± interval",
+        )
         minimum = min(float(observed.min()), float(lower.min()))
         maximum = max(float(observed.max()), float(upper.max()))
-        fit_axis.plot([minimum, maximum], [minimum, maximum], linestyle="--", linewidth=1)
+        fit_axis.plot(
+            [minimum, maximum], [minimum, maximum], linestyle="--", linewidth=1,
+            label="Ideal agreement",
+        )
         fit_axis.set_xlabel("Observed")
         fit_axis.set_ylabel("Cross-validated estimate")
-        fit_axis.set_title("Prediction intervals")
-        fit_axis.grid(True, alpha=0.25)
 
-        residual_axis.scatter(std, np.abs(residual))
+        error_figure, residual_axis = cls._single_figure("Error and uncertainty")
+        residual_axis.scatter(std, np.abs(residual), label="Absolute error")
         residual_axis.set_xlabel("Estimated uncertainty")
         residual_axis.set_ylabel("Absolute error")
-        residual_axis.set_title("Error and uncertainty")
-        residual_axis.grid(True, alpha=0.25)
 
-        standardized = np.divide(
-            residual,
-            std,
-            out=np.zeros_like(residual, dtype=float),
-            where=np.asarray(std) > 1e-12,
-        )
-        calibration_axis.hist(standardized, bins=min(10, max(4, len(standardized) // 2)))
-        calibration_axis.axvline(0, linestyle="--", linewidth=1)
-        calibration_axis.set_xlabel("Standardized residual")
-        calibration_axis.set_ylabel("Count")
-        calibration_axis.set_title(
+        coverage_figure, calibration_axis = cls._single_figure(
             f"Coverage {result.metrics['coverage_percent']:.1f}%"
         )
-        calibration_axis.grid(True, axis="y", alpha=0.25)
+        standardized = np.divide(
+            residual, std, out=np.zeros_like(residual, dtype=float), where=np.asarray(std) > 1e-12,
+        )
+        calibration_axis.hist(
+            standardized, bins=min(10, max(4, len(standardized) // 2)),
+            label="Standardized residuals",
+        )
+        calibration_axis.axvline(0, linestyle="--", linewidth=1, label="Zero residual")
+        calibration_axis.set_xlabel("Standardized residual")
+        calibration_axis.set_ylabel("Count")
+
+        figures = {
+            "Prediction intervals": interval_figure,
+            "Error & uncertainty": error_figure,
+            "Coverage": coverage_figure,
+        }
+        for figure in figures.values():
+            apply_chart_style(figure)
+        return figures
+
+    @classmethod
+    def calibration_figure(cls, result: TwinBuildResult) -> Figure:
+        """Backward-compatible combined calibration figure."""
+        figures = cls.calibration_figures(result)
+        table = result.calibration
+        figure = Figure(figsize=(10.5, 4.8), constrained_layout=True)
+        observed = table["observed_response"].to_numpy(dtype=float)
+        predicted = table["predicted_mean"].to_numpy(dtype=float)
+        lower = table["lower_bound"].to_numpy(dtype=float)
+        upper = table["upper_bound"].to_numpy(dtype=float)
+        residual = table["residual"].to_numpy(dtype=float)
+        std = table["prediction_std"].to_numpy(dtype=float)
+        fit_axis, residual_axis, calibration_axis = (
+            figure.add_subplot(131), figure.add_subplot(132), figure.add_subplot(133)
+        )
+        yerr = np.vstack([predicted - lower, upper - predicted])
+        fit_axis.errorbar(observed, predicted, yerr=yerr, fmt="o", alpha=0.75, capsize=2,
+                          label="Estimate ± interval")
+        minimum = min(float(observed.min()), float(lower.min()))
+        maximum = max(float(observed.max()), float(upper.max()))
+        fit_axis.plot([minimum, maximum], [minimum, maximum], linestyle="--", linewidth=1,
+                      label="Ideal agreement")
+        fit_axis.set_xlabel("Observed"); fit_axis.set_ylabel("Cross-validated estimate")
+        fit_axis.set_title("Prediction intervals")
+        residual_axis.scatter(std, np.abs(residual), label="Absolute error")
+        residual_axis.set_xlabel("Estimated uncertainty"); residual_axis.set_ylabel("Absolute error")
+        residual_axis.set_title("Error and uncertainty")
+        standardized = np.divide(residual, std, out=np.zeros_like(residual), where=std > 1e-12)
+        calibration_axis.hist(standardized, bins=min(10, max(4, len(standardized)//2)),
+                              label="Standardized residuals")
+        calibration_axis.axvline(0, linestyle="--", linewidth=1, label="Zero residual")
+        calibration_axis.set_xlabel("Standardized residual"); calibration_axis.set_ylabel("Count")
+        calibration_axis.set_title(f"Coverage {result.metrics['coverage_percent']:.1f}%")
+        apply_chart_style(figure)
         return figure
 
     @staticmethod
+    def _surface_matrix(surface: pd.DataFrame, value_field: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        x_field = str(surface.attrs.get("x_field") or "")
+        y_field = str(surface.attrs.get("y_field") or "")
+        if not x_field or not y_field:
+            excluded = {"grid_row", "grid_column", value_field}
+            candidates = [column for column in surface.columns if column not in excluded]
+            if len(candidates) < 2:
+                raise ValueError("Response-map coordinates are unavailable.")
+            x_field, y_field = candidates[0], candidates[1]
+        required = {x_field, y_field, "grid_row", "grid_column", value_field}
+        if not required.issubset(surface.columns):
+            raise ValueError("Response-map data are incomplete.")
+        row_count = int(surface["grid_row"].max()) + 1
+        column_count = int(surface["grid_column"].max()) + 1
+        expected = row_count * column_count
+        if len(surface) != expected:
+            raise ValueError("Response-map grid is incomplete and cannot be rendered.")
+        ordered = surface.sort_values(["grid_row", "grid_column"])
+        x = ordered[x_field].to_numpy(dtype=float).reshape(row_count, column_count)
+        y = ordered[y_field].to_numpy(dtype=float).reshape(row_count, column_count)
+        values = ordered[value_field].to_numpy(dtype=float).reshape(row_count, column_count)
+        return x, y, values
+
+    @classmethod
+    def response_map_figures(
+        cls,
+        surface: pd.DataFrame,
+        x_field: str,
+        y_field: str,
+        response_label: str,
+    ) -> dict[str, Figure]:
+        surface.attrs["x_field"] = x_field
+        surface.attrs["y_field"] = y_field
+        grid_x, grid_y, mean = cls._surface_matrix(surface, "predicted_mean")
+        _, _, uncertainty = cls._surface_matrix(surface, "normalized_uncertainty_percent")
+        reliability_values = surface.copy()
+        reliability_values["reliability_code"] = reliability_values["reliability_class"].map(
+            {"A": 1, "B": 2, "C": 3, "D": 4}
+        )
+        _, _, reliability = cls._surface_matrix(reliability_values, "reliability_code")
+
+        mean_figure, mean_axis = cls._single_figure("Estimated response")
+        mean_plot = mean_axis.contourf(grid_x, grid_y, mean, levels=18, cmap="viridis")
+        mean_figure.colorbar(mean_plot, ax=mean_axis, label=response_label)
+
+        uncertainty_figure, uncertainty_axis = cls._single_figure("Relative uncertainty")
+        uncertainty_plot = uncertainty_axis.contourf(
+            grid_x, grid_y, uncertainty, levels=18, cmap="magma"
+        )
+        uncertainty_figure.colorbar(uncertainty_plot, ax=uncertainty_axis, label="Uncertainty (%)")
+
+        reliability_figure, reliability_axis = cls._single_figure("Reliability class")
+        reliability_plot = reliability_axis.contourf(
+            grid_x, grid_y, reliability, levels=[0.5, 1.5, 2.5, 3.5, 4.5], cmap="RdYlGn_r"
+        )
+        colorbar = reliability_figure.colorbar(
+            reliability_plot, ax=reliability_axis, ticks=[1, 2, 3, 4], label="Reliability"
+        )
+        colorbar.ax.set_yticklabels(["A", "B", "C", "D"])
+
+        figures = {
+            "Estimated response": mean_figure,
+            "Relative uncertainty": uncertainty_figure,
+            "Reliability": reliability_figure,
+        }
+        for figure in figures.values():
+            for axis in figure.axes:
+                if getattr(axis, "_colorbar", None) is None:
+                    axis.set_xlabel(COLUMN_LABELS.get(x_field, x_field))
+                    axis.set_ylabel(COLUMN_LABELS.get(y_field, y_field))
+            apply_chart_style(figure)
+        return figures
+
+    @classmethod
+    def response_curve_figure(
+        cls, curve: pd.DataFrame, field: str, response_label: str
+    ) -> Figure:
+        figure, axis = cls._single_figure("One-dimensional response curve")
+        x = curve[field].to_numpy(dtype=float)
+        mean = curve["predicted_mean"].to_numpy(dtype=float)
+        lower = curve["lower_bound"].to_numpy(dtype=float)
+        upper = curve["upper_bound"].to_numpy(dtype=float)
+        axis.plot(x, mean, label="Estimated response")
+        axis.fill_between(x, lower, upper, alpha=0.25, label="Prediction interval")
+        axis.set_xlabel(COLUMN_LABELS.get(field, field))
+        axis.set_ylabel(response_label)
+        apply_chart_style(figure)
+        return figure
+
+    @classmethod
     def response_map_figure(
+        cls,
         surface: pd.DataFrame,
         x_field: str,
         y_field: str,
         response_label: str,
     ) -> Figure:
-        x_values = np.sort(surface[x_field].unique())
-        y_values = np.sort(surface[y_field].unique())
-        shape = (len(y_values), len(x_values))
-        mean = surface["predicted_mean"].to_numpy().reshape(shape)
-        uncertainty = surface["normalized_uncertainty_percent"].to_numpy().reshape(shape)
-        reliability_codes = surface["reliability_class"].map({"A": 1, "B": 2, "C": 3, "D": 4}).to_numpy().reshape(shape)
-        grid_x, grid_y = np.meshgrid(x_values, y_values)
-
+        """Backward-compatible combined response-map figure."""
+        surface.attrs["x_field"] = x_field
+        surface.attrs["y_field"] = y_field
+        grid_x, grid_y, mean = cls._surface_matrix(surface, "predicted_mean")
+        _, _, uncertainty = cls._surface_matrix(surface, "normalized_uncertainty_percent")
+        reliability_values = surface.copy()
+        reliability_values["reliability_code"] = reliability_values["reliability_class"].map(
+            {"A": 1, "B": 2, "C": 3, "D": 4}
+        )
+        _, _, reliability = cls._surface_matrix(reliability_values, "reliability_code")
         figure = Figure(figsize=(11.8, 4.5), constrained_layout=True)
-        mean_axis = figure.add_subplot(131)
-        uncertainty_axis = figure.add_subplot(132)
-        reliability_axis = figure.add_subplot(133)
-
+        mean_axis, uncertainty_axis, reliability_axis = (
+            figure.add_subplot(131), figure.add_subplot(132), figure.add_subplot(133)
+        )
         mean_plot = mean_axis.contourf(grid_x, grid_y, mean, levels=18, cmap="viridis")
         figure.colorbar(mean_plot, ax=mean_axis, label=response_label)
         mean_axis.set_title("Estimated response")
-
-        uncertainty_plot = uncertainty_axis.contourf(
-            grid_x, grid_y, uncertainty, levels=18, cmap="magma"
-        )
+        uncertainty_plot = uncertainty_axis.contourf(grid_x, grid_y, uncertainty, levels=18, cmap="magma")
         figure.colorbar(uncertainty_plot, ax=uncertainty_axis, label="Uncertainty (%)")
         uncertainty_axis.set_title("Relative uncertainty")
-
         reliability_plot = reliability_axis.contourf(
-            grid_x, grid_y, reliability_codes, levels=[0.5, 1.5, 2.5, 3.5, 4.5], cmap="RdYlGn_r"
+            grid_x, grid_y, reliability, levels=[0.5,1.5,2.5,3.5,4.5], cmap="RdYlGn_r"
         )
-        colorbar = figure.colorbar(reliability_plot, ax=reliability_axis, ticks=[1, 2, 3, 4])
-        colorbar.ax.set_yticklabels(["A", "B", "C", "D"])
+        colorbar = figure.colorbar(reliability_plot, ax=reliability_axis, ticks=[1,2,3,4], label="Reliability")
+        colorbar.ax.set_yticklabels(["A","B","C","D"])
         reliability_axis.set_title("Reliability class")
-
         for axis in (mean_axis, uncertainty_axis, reliability_axis):
             axis.set_xlabel(COLUMN_LABELS.get(x_field, x_field))
             axis.set_ylabel(COLUMN_LABELS.get(y_field, y_field))
+        apply_chart_style(figure)
         return figure
 
     @staticmethod

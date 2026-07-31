@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+
 from PyQt6.QtWidgets import (
     QAbstractItemView, QComboBox, QFormLayout, QPushButton, QSplitter,
     QTabWidget, QTableView, QWidget,
@@ -43,3 +45,9 @@ def polish_workspace(page: QWidget) -> None:
     for combo in page.findChildren(QComboBox):
         if combo.minimumWidth() < 140:
             combo.setMinimumWidth(140)
+
+    # Charts keep a readable natural area. The surrounding workspace or figure
+    # tab supplies scrollbars on smaller displays instead of crushing the plot.
+    for canvas in page.findChildren(FigureCanvasQTAgg):
+        if canvas.minimumWidth() < 520 or canvas.minimumHeight() < 420:
+            canvas.setMinimumSize(max(canvas.minimumWidth(), 520), max(canvas.minimumHeight(), 420))

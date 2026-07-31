@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
 
 from gpc_dtwin.services.audit_service import AuditService
 from gpc_dtwin.ui.models import DataFrameModel
-from gpc_dtwin.ui.widgets import MetricCard, SectionHeader
+from gpc_dtwin.ui.widgets import MetricCard
 
 
 class AuditPage(QWidget):
@@ -14,14 +14,11 @@ class AuditPage(QWidget):
         super().__init__(parent)
         self.context = context
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 22, 24, 24)
+        root.setContentsMargins(24, 16, 24, 24)
         root.setSpacing(14)
 
         heading = QHBoxLayout()
-        heading.addWidget(SectionHeader(
-            "Quality check",
-            "Repeatable checks for identity, composition, ranges, completeness, provenance, and calculations."
-        ), 1)
+        heading.addStretch(1)
         run_button = QPushButton("Run quality check")
         run_button.setObjectName("PrimaryButton")
         run_button.clicked.connect(self.context.run_audit)

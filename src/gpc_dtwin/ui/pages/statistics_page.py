@@ -17,7 +17,7 @@ from gpc_dtwin.paths import EXPORT_DIR
 from gpc_dtwin.services.statistics_service import StatisticsService
 from gpc_dtwin.ui.models import DataFrameModel
 from gpc_dtwin.ui.scrolling import scrollable_panel
-from gpc_dtwin.ui.widgets import SectionHeader, ValuePill
+from gpc_dtwin.ui.widgets import ValuePill
 
 
 class StatisticsPage(QWidget):
@@ -28,12 +28,8 @@ class StatisticsPage(QWidget):
         self.current_figure: Figure | None = None
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 22, 24, 24)
+        root.setContentsMargins(24, 16, 24, 24)
         root.setSpacing(14)
-        root.addWidget(SectionHeader(
-            "Statistical analysis",
-            "Descriptive statistics, correlations, group comparison, and cross-validated regression."
-        ))
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self._descriptive_tab(), "Descriptive")

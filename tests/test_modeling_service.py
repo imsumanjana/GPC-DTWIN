@@ -55,3 +55,72 @@ def test_model_comparison_prediction_and_persistence(tmp_path):
     service.delete_artifact(saved)
     assert not saved.exists()
     assert not saved.with_suffix(".json").exists()
+
+
+def test_model_diagnostics_are_available_as_separate_figures():
+    dataframe = DataService.load_csv(DATASET)
+    subset = dataframe[dataframe["record_group"].isin([
+        "AMBIENT_7D_MECHANICAL", "AMBIENT_28D_MECHANICAL"
+    ])].copy()
+    service = ModelingService()
+    result = service.compare_models(
+        subset,
+        response="compressive_strength_mpa",
+        predictors=["ggbs_percent_numeric", "mechanical_test_age_days"],
+        algorithms=["Linear Regression", "Ridge Regression"],
+        include_review_records=True,
+    )
+    figures = service.diagnostic_figures(result, result.best_algorithm)
+    assert set(figures) == {"Observed vs predicted", "Residuals"}
+    assert all(len(figure.axes) == 1 for figure in figures.values())
+
+
+def test_model_comparison_omits_response_incompatible_predictors():
+    dataframe = DataService.load_csv(DATASET)
+    service = ModelingService()
+    result = service.compare_models(
+        dataframe,
+        response="compressive_strength_mpa",
+        predictors=[
+            "ggbs_percent_numeric",
+            "mechanical_test_age_days",
+            "acid_type",
+            "acid_concentration_percent",
+            "acid_exposure_days",
+            "initial_mass_kg",
+            "initial_compressive_strength_mpa",
+        ],
+        algorithms=["Ridge Regression", "Random Forest"],
+        include_review_records=True,
+    )
+
+    assert "ggbs_percent_numeric" in result.predictors
+    assert "mechanical_test_age_days" in result.predictors
+    assert set(result.omitted_predictors) >= {
+        "acid_type",
+        "acid_concentration_percent",
+        "acid_exposure_days",
+        "initial_mass_kg",
+        "initial_compressive_strength_mpa",
+    }
+    assert result.artifact["metadata"]["omitted_predictors"]
+    assert len(result.rankings) == 2
+
+
+def test_predictor_availability_is_response_specific():
+    dataframe = DataService.load_csv(DATASET)
+    available, unavailable = ModelingService.predictor_availability(
+        dataframe,
+        "compressive_strength_mpa",
+        [
+            "ggbs_percent_numeric",
+            "mechanical_test_age_days",
+            "acid_type",
+            "acid_concentration_percent",
+        ],
+        include_review_records=True,
+    )
+    assert "ggbs_percent_numeric" in available
+    assert "mechanical_test_age_days" in available
+    assert "acid_type" in unavailable
+    assert "acid_concentration_percent" in unavailable

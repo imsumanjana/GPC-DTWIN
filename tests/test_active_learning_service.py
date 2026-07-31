@@ -105,3 +105,10 @@ def test_active_learning_figures_are_square():
     for figure in figures:
         width, height = figure.get_size_inches()
         assert width == height
+
+
+def test_active_learning_priority_outputs_are_separate_figures():
+    _, service, result = _run()
+    figures = service.recommendation_figures(result)
+    assert set(figures) == {"Response intervals", "Priority scores"}
+    assert all(len(figure.axes) == 1 for figure in figures.values())

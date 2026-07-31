@@ -54,14 +54,8 @@ class Visualization3DPage(QWidget):
         )
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 22, 24, 24)
+        root.setContentsMargins(24, 16, 24, 24)
         root.setSpacing(14)
-        root.addWidget(
-            SectionHeader(
-                "3D Explorer",
-                "Inspect response landscapes, uncertainty, reliability, and estimated material-state fields.",
-            )
-        )
         self.tabs = QTabWidget()
         self.tabs.addTab(self._surface_tab(), "Response surface")
         self.tabs.addTab(self._specimen_tab(), "Specimen field")

@@ -12,13 +12,15 @@ import tempfile
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import QSettings, Qt
-from PyQt6.QtWidgets import QApplication, QPushButton, QScrollArea
+from PyQt6.QtWidgets import QApplication, QPushButton, QScrollArea, QToolButton
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 
 from gpc_dtwin import __version__
 from gpc_dtwin.context import ApplicationContext
 from gpc_dtwin.metadata import ORGANIZATION_NAME, SETTINGS_APPLICATION
 from gpc_dtwin.paths import UI_CHECK_DIR
 from gpc_dtwin.ui.main_window import MainWindow
+from gpc_dtwin.ui.figure_tabs import FigureTabs
 from gpc_dtwin.ui.scrolling import ResponsiveScrollArea
 
 
@@ -51,6 +53,56 @@ def run_ui_check(output: Path, screenshots: bool = False) -> dict:
                                 "size": [width, height], "page": title,
                                 "issue": f"button below minimum readable height: {button.text()}",
                             })
+                    for figure_tabs in window.pages[index].findChildren(FigureTabs):
+                        if not figure_tabs.tabs.isMovable():
+                            findings.append({
+                                "size": [width, height], "page": title,
+                                "issue": "figure tabs are not reorderable",
+                            })
+                        if figure_tabs.tabs.tabBar().expanding():
+                            findings.append({
+                                "size": [width, height], "page": title,
+                                "issue": "figure tabs stretch unnecessarily",
+                            })
+                        if figure_tabs.square_display:
+                            if figure_tabs.natural_square_side < 600:
+                                findings.append({
+                                    "size": [width, height], "page": title,
+                                    "issue": "square figure host is below the natural-size threshold",
+                                })
+                            if figure_tabs.tabs.count():
+                                scroll = figure_tabs.tabs.currentWidget()
+                                if not isinstance(scroll, QScrollArea) or scroll.widgetResizable():
+                                    findings.append({
+                                        "size": [width, height], "page": title,
+                                        "issue": "square figure host does not preserve scrollable natural dimensions",
+                                    })
+                        actions = figure_tabs.findChildren(QToolButton, "FigureActionButton")
+                        if len(actions) < 3:
+                            findings.append({
+                                "size": [width, height], "page": title,
+                                "issue": "figure tab actions are incomplete",
+                            })
+                    for canvas in window.pages[index].findChildren(FigureCanvasQTAgg):
+                        style_button = getattr(canvas, "_gpc_style_button", None)
+                        if style_button is None:
+                            findings.append({
+                                "size": [width, height], "page": title,
+                                "issue": "chart canvas is missing its appearance icon",
+                            })
+                        elif style_button.x() < 0 or style_button.y() < 0 or (
+                            style_button.x() + style_button.width() > canvas.width()
+                            or style_button.y() + style_button.height() > canvas.height()
+                        ):
+                            findings.append({
+                                "size": [width, height], "page": title,
+                                "issue": "chart appearance icon is outside the canvas bounds",
+                            })
+                        if canvas.minimumWidth() < 520 or canvas.minimumHeight() < 420:
+                            findings.append({
+                                "size": [width, height], "page": title,
+                                "issue": "chart canvas minimum size is below the readability threshold",
+                            })
                     if screenshots:
                         safe = title.lower().replace(" ", "_").replace("&", "and")
                         window.grab().save(str(output / f"{width}x{height}_{index:02d}_{safe}.png"))
@@ -66,6 +118,8 @@ def run_ui_check(output: Path, screenshots: bool = False) -> dict:
         "pages": len(MainWindow.PAGE_META),
         "sizes": [[1024, 720], [1366, 768], [1920, 1080]],
         "passed": not findings,
+        "chart_style_icons": len(window.findChildren(QToolButton, "ChartStyleButton")) if 'window' in locals() else 0,
+        "figure_action_buttons": len(window.findChildren(QToolButton, "FigureActionButton")) if 'window' in locals() else 0,
         "findings": findings,
     }
     (output / "ui-check.json").write_text(json.dumps(report, indent=2), encoding="utf-8")

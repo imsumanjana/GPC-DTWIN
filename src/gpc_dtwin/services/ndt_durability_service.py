@@ -48,7 +48,7 @@ NDT_ALGORITHMS: dict[str, Callable[[], Any]] = {
     "Ridge Regression": lambda: Ridge(alpha=1.0),
     "Support Vector Regression": lambda: SVR(kernel="rbf", C=20.0, epsilon=0.08),
     "Random Forest": lambda: RandomForestRegressor(
-        n_estimators=240, min_samples_leaf=1, random_state=42, n_jobs=-1
+        n_estimators=240, min_samples_leaf=1, random_state=42, n_jobs=1
     ),
     "Gradient Boosting": lambda: GradientBoostingRegressor(
         n_estimators=180, learning_rate=0.035, max_depth=2, loss="huber", random_state=42

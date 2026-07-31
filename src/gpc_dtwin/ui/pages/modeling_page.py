@@ -21,6 +21,7 @@ from gpc_dtwin.figure_export import save_square_figure
 from gpc_dtwin.paths import EXPORT_DIR, MODEL_DIR
 from gpc_dtwin.services.modeling_service import ModelComparisonResult, ModelingService
 from gpc_dtwin.ui.models import DataFrameModel
+from gpc_dtwin.ui.figure_tabs import FigureTabs
 from gpc_dtwin.ui.scrolling import scrollable_panel
 from gpc_dtwin.ui.widgets import SectionHeader, ValuePill
 
@@ -36,12 +37,8 @@ class ModelingPage(QWidget):
         self.figures: dict[str, Figure] = {}
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 22, 24, 24)
+        root.setContentsMargins(24, 16, 24, 24)
         root.setSpacing(14)
-        root.addWidget(SectionHeader(
-            "Predictive Models",
-            "Compare regression algorithms, inspect cross-validated diagnostics, and apply saved models."
-        ))
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self._comparison_tab(), "Model comparison")
@@ -68,6 +65,7 @@ class ModelingPage(QWidget):
         controls_layout.setSpacing(10)
         form = QFormLayout()
         self.response_combo = QComboBox()
+        self.response_combo.currentIndexChanged.connect(self.refresh_predictor_availability)
         form.addRow("Response", self.response_combo)
         controls_layout.addLayout(form)
 
@@ -84,7 +82,14 @@ class ModelingPage(QWidget):
 
         self.include_review = QCheckBox("Include records marked for review")
         self.include_review.setChecked(False)
+        self.include_review.toggled.connect(self.refresh_predictor_availability)
         controls_layout.addWidget(self.include_review)
+        self.predictor_note = QLabel(
+            "Unavailable predictors are disabled automatically for the selected response."
+        )
+        self.predictor_note.setObjectName("Muted")
+        self.predictor_note.setWordWrap(True)
+        controls_layout.addWidget(self.predictor_note)
         run_button = QPushButton("Compare models")
         run_button.setObjectName("PrimaryButton")
         run_button.clicked.connect(self.run_comparison)
@@ -153,8 +158,8 @@ class ModelingPage(QWidget):
 
         diagnostic_widget = QWidget()
         diagnostic_layout = QVBoxLayout(diagnostic_widget)
-        self.diagnostics_canvas = FigureCanvasQTAgg(Figure(figsize=(8, 5), constrained_layout=True))
-        diagnostic_layout.addWidget(self.diagnostics_canvas)
+        self.diagnostic_figure_tabs = FigureTabs(minimum_canvas_size=(620, 540))
+        diagnostic_layout.addWidget(self.diagnostic_figure_tabs)
         self.result_tabs.addTab(diagnostic_widget, "Diagnostics")
 
         influence_widget = QWidget()
@@ -286,6 +291,55 @@ class ModelingPage(QWidget):
             checked_items=set(self.service.algorithm_names()),
             use_labels=False,
         )
+        self.refresh_predictor_availability()
+
+    def refresh_predictor_availability(self, *_args) -> None:
+        response = self.response_combo.currentData()
+        if not response or not hasattr(self, "predictor_list"):
+            return
+        try:
+            available, unavailable = self.service.predictor_availability(
+                self.context.dataframe,
+                str(response),
+                MODEL_PREDICTOR_COLUMNS,
+                include_review_records=self.include_review.isChecked(),
+            )
+        except Exception:
+            return
+
+        available_set = set(available)
+        unavailable_set = set(unavailable)
+        disabled_labels: list[str] = []
+
+        for index in range(self.predictor_list.count()):
+            item = self.predictor_list.item(index)
+            predictor = str(item.data(Qt.ItemDataRole.UserRole))
+            enabled = predictor != response and predictor in available_set
+            flags = item.flags()
+            if enabled:
+                item.setFlags(flags | Qt.ItemFlag.ItemIsEnabled)
+                item.setToolTip("")
+            else:
+                item.setFlags(flags & ~Qt.ItemFlag.ItemIsEnabled)
+                item.setCheckState(Qt.CheckState.Unchecked)
+                if predictor == response:
+                    item.setToolTip("The response cannot also be used as a predictor.")
+                else:
+                    item.setToolTip(
+                        "No usable values overlap the selected response in the active dataset."
+                    )
+                    if predictor in unavailable_set:
+                        disabled_labels.append(COLUMN_LABELS.get(predictor, predictor))
+
+        if disabled_labels:
+            self.predictor_note.setText(
+                f"{len(disabled_labels)} unavailable fields are disabled for "
+                f"{COLUMN_LABELS.get(str(response), str(response))}."
+            )
+        else:
+            self.predictor_note.setText(
+                "All listed predictors have usable overlap with the selected response."
+            )
 
     @staticmethod
     def _fill_combo(combo: QComboBox, values: list[str], preferred: str) -> None:
@@ -348,9 +402,16 @@ class ModelingPage(QWidget):
             self._show_result(result)
             self._configure_prediction_inputs(result.artifact)
             self.tabs.setCurrentIndex(0)
-            self.context.message.emit(
+            completion = (
                 f"Model comparison completed. {result.best_algorithm} ranked first by RMSE."
             )
+            if result.omitted_predictors:
+                count = len(result.omitted_predictors)
+                completion += (
+                    f" {count} unavailable predictor"
+                    f"{'s were' if count != 1 else ' was'} omitted."
+                )
+            self.context.message.emit(completion)
         except Exception as error:
             QMessageBox.warning(self, "Model comparison unavailable", str(error))
         finally:
@@ -363,9 +424,17 @@ class ModelingPage(QWidget):
         self.mae_pill.set_value(f"{metrics['mae']:.4f}")
         self.r2_pill.set_value(f"{metrics['r2']:.4f}", "success" if metrics["r2"] >= 0.5 else "warning")
         self.observations_pill.set_value(result.observations)
-        self.cv_label.setText(
-            f"{result.cv_method} · {result.excluded_records} rows omitted because the response was unavailable or the record state was excluded."
+        message = (
+            f"{result.cv_method} · {result.excluded_records} rows omitted because the "
+            "response was unavailable or the record state was excluded."
         )
+        if result.omitted_predictors:
+            labels = [
+                COLUMN_LABELS.get(column, column)
+                for column in result.omitted_predictors
+            ]
+            message += " Unavailable predictors omitted: " + ", ".join(labels) + "."
+        self.cv_label.setText(message)
         self.ranking_model.set_dataframe(result.rankings)
         self.influence_model.set_dataframe(result.feature_influence)
 
@@ -376,10 +445,11 @@ class ModelingPage(QWidget):
         self.diagnostic_algorithm.blockSignals(False)
 
         self.figures["comparison"] = self.service.comparison_figure(result)
-        self.figures["diagnostics"] = self.service.diagnostics_figure(result, result.best_algorithm)
+        diagnostic_figures = self.service.diagnostic_figures(result, result.best_algorithm)
+        self.figures["diagnostics"] = next(iter(diagnostic_figures.values()))
         self.figures["influence"] = self.service.influence_figure(result)
         self.comparison_canvas = self._replace_canvas(self.comparison_canvas, self.figures["comparison"])
-        self.diagnostics_canvas = self._replace_canvas(self.diagnostics_canvas, self.figures["diagnostics"])
+        self.diagnostic_figure_tabs.set_figures(diagnostic_figures)
         self.influence_canvas = self._replace_canvas(self.influence_canvas, self.figures["influence"])
         self._set_active_artifact(result.artifact)
 
@@ -387,9 +457,9 @@ class ModelingPage(QWidget):
         if self.current_result is None or not algorithm:
             return
         try:
-            figure = self.service.diagnostics_figure(self.current_result, algorithm)
-            self.figures["diagnostics"] = figure
-            self.diagnostics_canvas = self._replace_canvas(self.diagnostics_canvas, figure)
+            figures = self.service.diagnostic_figures(self.current_result, algorithm)
+            self.figures["diagnostics"] = next(iter(figures.values()))
+            self.diagnostic_figure_tabs.set_figures(figures)
         except Exception as error:
             QMessageBox.warning(self, "Diagnostics unavailable", str(error))
 
@@ -559,7 +629,10 @@ class ModelingPage(QWidget):
     def export_active_figure(self) -> None:
         keys = ["comparison", "diagnostics", "influence"]
         key = keys[self.result_tabs.currentIndex()] if self.result_tabs.currentIndex() < len(keys) else "comparison"
-        figure = self.figures.get(key)
+        figure = (
+            self.diagnostic_figure_tabs.current_figure()
+            if key == "diagnostics" else self.figures.get(key)
+        )
         if figure is None:
             QMessageBox.information(self, "Nothing to export", "Run a model comparison first.")
             return

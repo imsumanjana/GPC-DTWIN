@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -21,6 +20,7 @@ from gpc_dtwin.figure_export import save_square_figure
 from gpc_dtwin.paths import EXPORT_DIR, TWIN_DIR
 from gpc_dtwin.services.digital_twin_service import DigitalTwinService, TwinBuildResult
 from gpc_dtwin.ui.models import DataFrameModel
+from gpc_dtwin.ui.figure_tabs import FigureTabs
 from gpc_dtwin.ui.scrolling import scrollable_panel
 from gpc_dtwin.ui.widgets import SectionHeader, ValuePill
 
@@ -34,16 +34,13 @@ class DigitalTwinPage(QWidget):
         self.active_artifact: dict | None = None
         self.batch_predictions = pd.DataFrame()
         self.map_data = pd.DataFrame()
-        self.calibration_figure: Figure | None = None
-        self.map_figure: Figure | None = None
+        self.calibration_figures: dict[str, Figure] = {}
+        self.map_figures: dict[str, Figure] = {}
+        self.map_mode = "2d"
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 22, 24, 24)
+        root.setContentsMargins(24, 16, 24, 24)
         root.setSpacing(14)
-        root.addWidget(SectionHeader(
-            "Digital Twin",
-            "Create uncertainty-aware response models, inspect calibration, and explore supported material scenarios."
-        ))
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_tab(), "Build and calibrate")
         self.tabs.addTab(self._scenario_tab(), "Prediction")
@@ -140,8 +137,8 @@ class DigitalTwinPage(QWidget):
         self.calibration_table.setSortingEnabled(True)
         self.calibration_table.setAlternatingRowColors(True)
         calibration_splitter.addWidget(self.calibration_table)
-        self.calibration_canvas = FigureCanvasQTAgg(Figure(figsize=(8, 5), constrained_layout=True))
-        calibration_splitter.addWidget(self.calibration_canvas)
+        self.calibration_figure_tabs = FigureTabs(minimum_canvas_size=(620, 540))
+        calibration_splitter.addWidget(self.calibration_figure_tabs)
         calibration_splitter.setSizes([520, 780])
         results_layout.addWidget(calibration_splitter, 1)
         splitter.addWidget(results)
@@ -241,9 +238,14 @@ class DigitalTwinPage(QWidget):
         toolbar.setContentsMargins(18, 14, 18, 14)
         self.map_x_combo = QComboBox()
         self.map_y_combo = QComboBox()
+        self.map_x_combo.currentIndexChanged.connect(self._keep_map_axes_distinct)
+        self.map_y_combo.currentIndexChanged.connect(self._keep_map_axes_distinct)
+        self.map_x_combo.currentIndexChanged.connect(self._invalidate_map_view)
+        self.map_y_combo.currentIndexChanged.connect(self._invalidate_map_view)
         self.map_resolution = QSpinBox()
         self.map_resolution.setRange(15, 100)
         self.map_resolution.setValue(45)
+        self.map_resolution.valueChanged.connect(self._invalidate_map_view)
         toolbar.addWidget(QLabel("Horizontal axis"))
         toolbar.addWidget(self.map_x_combo)
         toolbar.addWidget(QLabel("Vertical axis"))
@@ -267,8 +269,10 @@ class DigitalTwinPage(QWidget):
         self.map_note.setObjectName("Muted")
         self.map_note.setWordWrap(True)
         layout.addWidget(self.map_note)
-        self.map_canvas = FigureCanvasQTAgg(Figure(figsize=(11, 5), constrained_layout=True))
-        layout.addWidget(self.map_canvas, 1)
+        self.map_figure_tabs = FigureTabs(
+            minimum_canvas_size=(720, 720), square_display=True, natural_square_side=720
+        )
+        layout.addWidget(self.map_figure_tabs, 1)
         return page
 
     def _library_tab(self) -> QWidget:
@@ -374,29 +378,8 @@ class DigitalTwinPage(QWidget):
             f"{result.excluded_records} rows omitted."
         )
         self.calibration_model.set_dataframe(result.calibration)
-        self.calibration_figure = self.service.calibration_figure(result)
-        self.calibration_canvas = self._replace_canvas(
-            self.calibration_canvas, self.calibration_figure
-        )
-
-    @staticmethod
-    def _replace_canvas(old: FigureCanvasQTAgg, figure: Figure) -> FigureCanvasQTAgg:
-        parent = old.parentWidget()
-        canvas = FigureCanvasQTAgg(figure)
-        if isinstance(parent, QSplitter):
-            index = parent.indexOf(old)
-            old.setParent(None)
-            old.deleteLater()
-            parent.insertWidget(index, canvas)
-        else:
-            layout = parent.layout()
-            index = layout.indexOf(old)
-            layout.removeWidget(old)
-            old.setParent(None)
-            old.deleteLater()
-            layout.insertWidget(index, canvas, 1)
-        canvas.draw_idle()
-        return canvas
+        self.calibration_figures = self.service.calibration_figures(result)
+        self.calibration_figure_tabs.set_figures(self.calibration_figures)
 
     def _set_active_artifact(self, artifact: dict) -> None:
         self.active_artifact = artifact
@@ -429,25 +412,62 @@ class DigitalTwinPage(QWidget):
         self.scenario_table.resizeColumnsToContents()
 
     def _configure_map_axes(self, artifact: dict) -> None:
-        metadata = artifact["metadata"]
-        numeric_ranges = metadata.get("numeric_training_ranges", {})
-        values = [
-            column for column in metadata.get("predictors", [])
-            if column in MODEL_NUMERIC_PREDICTORS and column in numeric_ranges
-        ]
+        self.map_data = pd.DataFrame()
+        self.map_figures = {}
+        self.map_figure_tabs.clear()
+        values = self.service.map_axis_candidates(artifact)
+        self.map_x_combo.blockSignals(True)
+        self.map_y_combo.blockSignals(True)
         self.map_x_combo.clear()
         self.map_y_combo.clear()
         for value in values:
             label = COLUMN_LABELS.get(value, value)
             self.map_x_combo.addItem(label, value)
             self.map_y_combo.addItem(label, value)
-        if self.map_y_combo.count() > 1:
+        self.map_mode = "2d" if len(values) >= 2 else "1d" if len(values) == 1 else "none"
+        self.map_y_combo.setEnabled(self.map_mode == "2d")
+        if self.map_mode == "2d":
             self.map_y_combo.setCurrentIndex(1)
+            self.map_note.setText(
+                "Response maps keep all unselected predictors at fitted default values."
+            )
+        elif self.map_mode == "1d":
+            self.map_note.setText(
+                "Only one predictor varies across the fitted data. A one-dimensional response curve will be generated."
+            )
+        else:
+            self.map_note.setText(
+                "The active twin has no numeric predictor with a usable fitted range."
+            )
+        self.map_x_combo.blockSignals(False)
+        self.map_y_combo.blockSignals(False)
+
+
+    def _invalidate_map_view(self, *_args) -> None:
+        if not self.map_figures:
+            return
+        self.map_data = pd.DataFrame()
+        self.map_figures = {}
+        self.map_figure_tabs.clear()
         self.map_note.setText(
-            "Response maps keep all unselected predictors at fitted default values."
-            if len(values) >= 2 else
-            "The active twin needs at least two numeric predictors for a response map."
+            "Response-view settings changed. Generate the view to update the figure."
         )
+
+    def _keep_map_axes_distinct(self, *_args) -> None:
+        if self.map_mode != "2d" or self.map_x_combo.count() < 2:
+            return
+        if self.map_x_combo.currentData() != self.map_y_combo.currentData():
+            return
+        sender = self.sender()
+        target = self.map_y_combo if sender is self.map_x_combo else self.map_x_combo
+        for index in range(target.count()):
+            if target.itemData(index) != (
+                self.map_x_combo.currentData() if target is self.map_y_combo else self.map_y_combo.currentData()
+            ):
+                target.blockSignals(True)
+                target.setCurrentIndex(index)
+                target.blockSignals(False)
+                break
 
     def _scenario_values(self) -> dict[str, object]:
         if self.active_artifact is None:
@@ -508,27 +528,53 @@ class DigitalTwinPage(QWidget):
             QMessageBox.information(self, "No twin selected", "Build a twin or load one first.")
             return
         x_field = self.map_x_combo.currentData()
-        y_field = self.map_y_combo.currentData()
-        if not x_field or not y_field:
-            QMessageBox.information(self, "Map unavailable", "Select two numeric predictors.")
+        if not x_field or self.map_mode == "none":
+            QMessageBox.information(
+                self, "Response view unavailable",
+                "The active twin does not contain a numeric predictor with a usable fitted range."
+            )
             return
         self.setCursor(Qt.CursorShape.WaitCursor)
         try:
-            self.map_data = self.service.response_map(
-                self.active_artifact, x_field, y_field, self.map_resolution.value()
-            )
             response = self.active_artifact["metadata"]["response"]
-            self.map_figure = self.service.response_map_figure(
-                self.map_data, x_field, y_field, COLUMN_LABELS.get(response, response)
+            response_label = COLUMN_LABELS.get(response, response)
+            if self.map_mode == "1d":
+                self.map_data = self.service.response_curve(
+                    self.active_artifact, x_field, self.map_resolution.value()
+                )
+                figure = self.service.response_curve_figure(
+                    self.map_data, x_field, response_label
+                )
+                self.map_figures = {"Response curve": figure}
+                self.map_note.setText(
+                    f"{len(self.map_data)} curve points · unselected predictors held at fitted defaults."
+                )
+            else:
+                y_field = self.map_y_combo.currentData()
+                if not y_field or x_field == y_field:
+                    QMessageBox.information(
+                        self, "Response map unavailable", "Select two different varying predictors."
+                    )
+                    return
+                self.map_data = self.service.response_map(
+                    self.active_artifact, x_field, y_field, self.map_resolution.value()
+                )
+                self.map_figures = self.service.response_map_figures(
+                    self.map_data, x_field, y_field, response_label
+                )
+                reliability = self.map_data["reliability_class"].value_counts().to_dict()
+                summary = " · ".join(f"{grade}: {reliability.get(grade, 0)}" for grade in "ABCD")
+                self.map_note.setText(
+                    f"{len(self.map_data)} grid points · reliability distribution {summary}."
+                )
+            self.map_figure_tabs.set_figures(self.map_figures)
+        except ValueError as error:
+            QMessageBox.information(self, "Response view unavailable", str(error))
+        except Exception:
+            QMessageBox.warning(
+                self, "Response view unavailable",
+                "The response view could not be generated. Review the selected axes and fitted data ranges."
             )
-            self.map_canvas = self._replace_canvas(self.map_canvas, self.map_figure)
-            reliability = self.map_data["reliability_class"].value_counts().to_dict()
-            summary = " · ".join(f"{grade}: {reliability.get(grade, 0)}" for grade in "ABCD")
-            self.map_note.setText(
-                f"{len(self.map_data)} grid points · reliability distribution {summary}."
-            )
-        except Exception as error:
-            QMessageBox.warning(self, "Response map unavailable", str(error))
         finally:
             self.unsetCursor()
 
@@ -610,10 +656,14 @@ class DigitalTwinPage(QWidget):
             self.context.message.emit(f"Data exported to {destination.name}.")
 
     def export_calibration_figure(self) -> None:
-        self._export_figure(self.calibration_figure, "twin_calibration.png")
+        self._export_figure(
+            self.calibration_figure_tabs.current_figure(), "twin_calibration.png"
+        )
 
     def export_map_figure(self) -> None:
-        self._export_figure(self.map_figure, "twin_response_map.png")
+        self._export_figure(
+            self.map_figure_tabs.current_figure(), "twin_response_map.png"
+        )
 
     def _export_figure(self, figure: Figure | None, name: str) -> None:
         if figure is None:

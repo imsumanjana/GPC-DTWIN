@@ -27,6 +27,7 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.svm import SVR
 
 from gpc_dtwin import __version__
+from gpc_dtwin.chart_style import apply_chart_style
 from gpc_dtwin.columns import COLUMN_LABELS, MODEL_NUMERIC_PREDICTORS
 
 
@@ -36,14 +37,14 @@ MODEL_FACTORIES: dict[str, Callable[[], Any]] = {
     "Elastic Net": lambda: ElasticNet(alpha=0.03, l1_ratio=0.35, max_iter=20000, random_state=42),
     "Support Vector Regression": lambda: SVR(kernel="rbf", C=25.0, epsilon=0.08, gamma="scale"),
     "Random Forest": lambda: RandomForestRegressor(
-        n_estimators=180, min_samples_leaf=1, random_state=42, n_jobs=-1
+        n_estimators=180, min_samples_leaf=1, random_state=42, n_jobs=1
     ),
     "Gradient Boosting": lambda: GradientBoostingRegressor(
         n_estimators=160, learning_rate=0.04, max_depth=2, random_state=42,
         loss="huber"
     ),
     "Extra Trees": lambda: ExtraTreesRegressor(
-        n_estimators=180, min_samples_leaf=1, random_state=42, n_jobs=-1
+        n_estimators=180, min_samples_leaf=1, random_state=42, n_jobs=1
     ),
 }
 
@@ -54,6 +55,7 @@ REVIEW_STATES = {"REQUIRES_REVIEW", "CONFLICTING"}
 class ModelComparisonResult:
     response: str
     predictors: tuple[str, ...]
+    omitted_predictors: tuple[str, ...]
     observations: int
     excluded_records: int
     cv_method: str
@@ -77,25 +79,85 @@ class ModelingService:
         return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
 
     @staticmethod
+    def _filtered_response_rows(
+        dataframe: pd.DataFrame,
+        response: str,
+        include_review_records: bool,
+    ) -> pd.DataFrame:
+        if response not in dataframe.columns:
+            raise ValueError(f"Missing selected response: {response}")
+        working = dataframe.copy()
+        if "data_status" in working.columns:
+            states = working["data_status"].astype("string").str.upper()
+            keep = states.ne("EXCLUDED")
+            if not include_review_records:
+                keep &= ~states.isin(REVIEW_STATES)
+            working = working.loc[keep].copy()
+        working[response] = pd.to_numeric(working[response], errors="coerce")
+        return working.dropna(subset=[response]).copy()
+
+    @staticmethod
+    def predictor_availability(
+        dataframe: pd.DataFrame,
+        response: str,
+        predictors: list[str],
+        include_review_records: bool = False,
+    ) -> tuple[list[str], list[str]]:
+        """Return predictors with response-overlapping values and unavailable fields."""
+        requested = [
+            predictor
+            for predictor in dict.fromkeys(predictors)
+            if predictor != response
+        ]
+        missing = [column for column in requested if column not in dataframe.columns]
+        if missing:
+            raise ValueError("Missing selected fields: " + ", ".join(missing))
+
+        working = ModelingService._filtered_response_rows(
+            dataframe, response, include_review_records
+        )
+        available: list[str] = []
+        unavailable: list[str] = []
+
+        for predictor in requested:
+            if predictor in MODEL_NUMERIC_PREDICTORS:
+                values = pd.to_numeric(working[predictor], errors="coerce")
+            else:
+                values = working[predictor].astype("string").str.strip()
+                values = values.mask(values.eq(""))
+            if values.notna().any():
+                available.append(predictor)
+            else:
+                unavailable.append(predictor)
+
+        return available, unavailable
+
+    @staticmethod
     def _prepare_working_data(
         dataframe: pd.DataFrame,
         response: str,
         predictors: list[str],
         include_review_records: bool,
         group_column: str,
-    ) -> tuple[pd.DataFrame, int]:
-        predictors = list(dict.fromkeys(predictors))
-        required = [response, *predictors]
+    ) -> tuple[pd.DataFrame, int, list[str], list[str]]:
+        requested = [
+            predictor
+            for predictor in dict.fromkeys(predictors)
+            if predictor != response
+        ]
+        if not requested:
+            raise ValueError("Select at least one predictor.")
+
+        required = [response, *requested]
         missing = [column for column in required if column not in dataframe.columns]
         if missing:
             raise ValueError("Missing selected fields: " + ", ".join(missing))
-        if not predictors:
-            raise ValueError("Select at least one predictor.")
 
         extra = []
         for column in ("record_id", "mix_id", "data_status", group_column):
             if column in dataframe.columns and column not in required and column not in extra:
                 extra.append(column)
+
         working = dataframe.loc[:, [*required, *extra]].copy()
         original_count = len(working)
 
@@ -107,22 +169,34 @@ class ModelingService:
             working = working.loc[keep].copy()
 
         working[response] = pd.to_numeric(working[response], errors="coerce")
-        working = working.dropna(subset=[response])
+        working = working.dropna(subset=[response]).copy()
 
-        all_missing = []
-        for predictor in predictors:
+        usable: list[str] = []
+        omitted: list[str] = []
+        for predictor in requested:
             if predictor in MODEL_NUMERIC_PREDICTORS:
-                working[predictor] = pd.to_numeric(working[predictor], errors="coerce")
-            if working[predictor].isna().all():
-                all_missing.append(predictor)
-        if all_missing:
+                values = pd.to_numeric(working[predictor], errors="coerce")
+            else:
+                values = working[predictor].astype("string").str.strip()
+                values = values.mask(values.eq(""))
+            working[predictor] = values
+            if values.notna().any():
+                usable.append(predictor)
+            else:
+                omitted.append(predictor)
+
+        if not usable:
+            response_label = COLUMN_LABELS.get(response, response)
             raise ValueError(
-                "Selected predictors contain no usable values: " + ", ".join(all_missing)
+                f"No selected predictor has usable values for {response_label}. "
+                "Choose fields that overlap the selected response."
             )
         if len(working) < 8:
             raise ValueError("At least eight usable response records are required.")
 
-        return working, original_count - len(working)
+        keep_columns = [response, *usable, *extra]
+        working = working.loc[:, list(dict.fromkeys(keep_columns))].copy()
+        return working, original_count - len(working), usable, omitted
 
     @staticmethod
     def _preprocessor(predictors: list[str]) -> tuple[ColumnTransformer, list[str], list[str]]:
@@ -215,8 +289,9 @@ class ModelingService:
         if unsupported:
             raise ValueError("Unsupported algorithms: " + ", ".join(unsupported))
 
-        working, excluded_records = self._prepare_working_data(
-            dataframe, response, predictors, include_review_records, group_column
+        requested_predictors = list(dict.fromkeys(predictors))
+        working, excluded_records, predictors, omitted_predictors = self._prepare_working_data(
+            dataframe, response, requested_predictors, include_review_records, group_column
         )
         x = working[predictors]
         y = working[response].to_numpy(dtype=float)
@@ -286,6 +361,8 @@ class ModelingService:
             "response": response,
             "response_label": COLUMN_LABELS.get(response, response),
             "predictors": predictors,
+            "requested_predictors": requested_predictors,
+            "omitted_predictors": omitted_predictors,
             "numeric_predictors": [column for column in predictors if column in MODEL_NUMERIC_PREDICTORS],
             "categorical_predictors": [column for column in predictors if column not in MODEL_NUMERIC_PREDICTORS],
             "input_defaults": defaults,
@@ -303,6 +380,7 @@ class ModelingService:
         return ModelComparisonResult(
             response=response,
             predictors=tuple(predictors),
+            omitted_predictors=tuple(omitted_predictors),
             observations=len(working),
             excluded_records=excluded_records,
             cv_method=cv_method,
@@ -357,7 +435,7 @@ class ModelingService:
         return figure
 
     @staticmethod
-    def diagnostics_figure(result: ModelComparisonResult, algorithm: str | None = None) -> Figure:
+    def diagnostic_figures(result: ModelComparisonResult, algorithm: str | None = None) -> dict[str, Figure]:
         algorithm = algorithm or result.best_algorithm
         slug = ModelingService._slug(algorithm)
         predicted_column = f"{slug}_predicted"
@@ -368,24 +446,54 @@ class ModelingService:
         predicted = result.predictions[predicted_column].astype(float)
         residual = result.predictions[residual_column].astype(float)
 
-        figure = Figure(figsize=(9, 4.8), constrained_layout=True)
-        fit_axis = figure.add_subplot(121)
-        residual_axis = figure.add_subplot(122)
-        fit_axis.scatter(observed, predicted)
+        fit_figure = Figure(figsize=(6.6, 5.8), constrained_layout=True)
+        fit_axis = fit_figure.add_subplot(111)
+        fit_axis.scatter(observed, predicted, label="Cross-validated predictions")
         minimum = min(float(observed.min()), float(predicted.min()))
         maximum = max(float(observed.max()), float(predicted.max()))
-        fit_axis.plot([minimum, maximum], [minimum, maximum], linestyle="--", linewidth=1)
+        fit_axis.plot([minimum, maximum], [minimum, maximum], linestyle="--", linewidth=1,
+                      label="Ideal agreement")
         fit_axis.set_xlabel("Observed")
         fit_axis.set_ylabel("Cross-validated prediction")
         fit_axis.set_title(algorithm)
-        fit_axis.grid(True, alpha=0.25)
 
-        residual_axis.scatter(predicted, residual)
-        residual_axis.axhline(0, linestyle="--", linewidth=1)
+        residual_figure = Figure(figsize=(6.6, 5.8), constrained_layout=True)
+        residual_axis = residual_figure.add_subplot(111)
+        residual_axis.scatter(predicted, residual, label="Residuals")
+        residual_axis.axhline(0, linestyle="--", linewidth=1, label="Zero residual")
         residual_axis.set_xlabel("Cross-validated prediction")
         residual_axis.set_ylabel("Residual")
         residual_axis.set_title("Residual pattern")
-        residual_axis.grid(True, alpha=0.25)
+
+        figures = {"Observed vs predicted": fit_figure, "Residuals": residual_figure}
+        for figure in figures.values():
+            apply_chart_style(figure)
+        return figures
+
+    @staticmethod
+    def diagnostics_figure(result: ModelComparisonResult, algorithm: str | None = None) -> Figure:
+        """Backward-compatible combined diagnostic view."""
+        figures = ModelingService.diagnostic_figures(result, algorithm)
+        algorithm = algorithm or result.best_algorithm
+        slug = ModelingService._slug(algorithm)
+        observed = result.predictions["observed"].astype(float)
+        predicted = result.predictions[f"{slug}_predicted"].astype(float)
+        residual = result.predictions[f"{slug}_residual"].astype(float)
+        figure = Figure(figsize=(9, 4.8), constrained_layout=True)
+        fit_axis = figure.add_subplot(121)
+        residual_axis = figure.add_subplot(122)
+        fit_axis.scatter(observed, predicted, label="Cross-validated predictions")
+        minimum = min(float(observed.min()), float(predicted.min()))
+        maximum = max(float(observed.max()), float(predicted.max()))
+        fit_axis.plot([minimum, maximum], [minimum, maximum], linestyle="--", linewidth=1,
+                      label="Ideal agreement")
+        fit_axis.set_xlabel("Observed"); fit_axis.set_ylabel("Cross-validated prediction")
+        fit_axis.set_title(algorithm)
+        residual_axis.scatter(predicted, residual, label="Residuals")
+        residual_axis.axhline(0, linestyle="--", linewidth=1, label="Zero residual")
+        residual_axis.set_xlabel("Cross-validated prediction"); residual_axis.set_ylabel("Residual")
+        residual_axis.set_title("Residual pattern")
+        apply_chart_style(figure)
         return figure
 
     @staticmethod

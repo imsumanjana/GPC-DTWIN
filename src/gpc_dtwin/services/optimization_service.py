@@ -16,6 +16,7 @@ from matplotlib.figure import Figure
 from scipy.stats import qmc
 
 from gpc_dtwin import __version__
+from gpc_dtwin.chart_style import apply_chart_style
 from gpc_dtwin.columns import COLUMN_LABELS, MODEL_NUMERIC_PREDICTORS
 from gpc_dtwin.services.digital_twin_service import DigitalTwinService, TwinBuildResult
 
@@ -212,6 +213,49 @@ class OptimizationService:
         limits = artifact["metadata"].get("response_training_range", [0.0, 1.0])
         return max(float(limits[1]) - float(limits[0]), 1e-9)
 
+    @staticmethod
+    def _response_specific_predictors(
+        dataframe: pd.DataFrame,
+        response: str,
+        predictors: list[str],
+        include_review_records: bool,
+    ) -> tuple[list[str], list[str]]:
+        """Return predictors that contain usable values for a response subset.
+
+        Experimental tables often record different response families under different
+        test conditions. A predictor such as AAS:B can therefore be valid for
+        compressive-strength rows while being intentionally blank for flexural rows.
+        Optimization must adapt each surrogate to its supported fields instead of
+        rejecting the complete multi-response search.
+        """
+        if response not in dataframe.columns:
+            raise ValueError(f"Response field is unavailable: {response}")
+        mask = pd.to_numeric(dataframe[response], errors="coerce").notna()
+        if "data_status" in dataframe.columns:
+            states = dataframe["data_status"].astype("string").str.upper()
+            mask &= states.ne("EXCLUDED")
+            if not include_review_records:
+                mask &= ~states.isin({"REQUIRES_REVIEW", "CONFLICTING"})
+        subset = dataframe.loc[mask]
+        usable: list[str] = []
+        dropped: list[str] = []
+        for predictor in dict.fromkeys(predictors):
+            if predictor not in subset.columns:
+                dropped.append(predictor)
+                continue
+            if predictor in MODEL_NUMERIC_PREDICTORS:
+                values = pd.to_numeric(subset[predictor], errors="coerce")
+                valid = values.notna().any()
+            else:
+                values = subset[predictor].astype("string").str.strip()
+                valid = values.notna().any() and values.ne("").any()
+            (usable if valid else dropped).append(predictor)
+        if not usable:
+            raise ValueError(
+                f"No selected predictor has usable values for {COLUMN_LABELS.get(response, response)}."
+            )
+        return usable, dropped
+
     def _build_surrogates(
         self,
         dataframe: pd.DataFrame,
@@ -228,21 +272,28 @@ class OptimizationService:
         rows: list[dict[str, Any]] = []
         twin_service = DigitalTwinService()
         for response in unique_responses:
+            usable_predictors, dropped_predictors = self._response_specific_predictors(
+                dataframe, response, predictors, include_review_records
+            )
             result: TwinBuildResult = twin_service.build_twin(
                 dataframe=dataframe,
                 response=response,
-                predictors=predictors,
+                predictors=usable_predictors,
                 method=method,
                 confidence_percent=confidence_percent,
                 include_review_records=include_review_records,
                 group_column="mix_id",
             )
+            result.artifact["metadata"]["selected_predictors"] = list(predictors)
+            result.artifact["metadata"]["dropped_predictors"] = list(dropped_predictors)
             artifacts[response] = result.artifact
             rows.append({
                 "response": response,
                 "response_label": COLUMN_LABELS.get(response, response),
                 "method": method,
                 "observations": result.observations,
+                "used_predictors": ", ".join(usable_predictors),
+                "dropped_predictors": ", ".join(dropped_predictors),
                 "rmse": result.metrics["rmse"],
                 "mae": result.metrics["mae"],
                 "r2": result.metrics["r2"],
@@ -1013,19 +1064,61 @@ class OptimizationService:
         return figure
 
     @staticmethod
+    def inverse_figures(result: InverseDesignResult) -> dict[str, Figure]:
+        table = result.recommendations.head(15)
+        ranks = table["recommendation_rank"].to_numpy(dtype=int)
+
+        score_figure = Figure(figsize=(6.6, 5.8), constrained_layout=True)
+        score_axis = score_figure.add_subplot(111)
+        score_axis.barh(
+            ranks.astype(str), table["design_loss"].to_numpy(dtype=float),
+            label="Design loss",
+        )
+        score_axis.invert_yaxis()
+        score_axis.set_xlabel("Design loss")
+        score_axis.set_ylabel("Recommendation rank")
+        score_axis.set_title("Ranked alternatives")
+
+        ratios: list[np.ndarray] = []
+        labels: list[str] = []
+        for target in result.targets:
+            prefix = OptimizationService._slug(target.response)
+            values = table[f"{prefix}_estimate"].to_numpy(dtype=float)
+            span = OptimizationService._response_span(result.artifacts[target.response])
+            if target.relation == "At least":
+                satisfaction = 1.0 - np.maximum(0.0, target.target - values) / span
+            elif target.relation == "At most":
+                satisfaction = 1.0 - np.maximum(0.0, values - target.target) / span
+            else:
+                satisfaction = 1.0 - np.abs(values - target.target) / span
+            ratios.append(np.clip(satisfaction, 0.0, 1.0))
+            labels.append(COLUMN_LABELS.get(target.response, target.response))
+
+        heat_figure = Figure(figsize=(6.6, 5.8), constrained_layout=True)
+        heat_axis = heat_figure.add_subplot(111)
+        matrix = np.vstack(ratios)
+        image = heat_axis.imshow(matrix, aspect="auto", vmin=0.0, vmax=1.0, cmap="RdYlGn")
+        heat_axis.set_yticks(np.arange(len(labels)), labels)
+        heat_axis.set_xticks(np.arange(len(table)), table["recommendation_rank"].astype(str))
+        heat_axis.set_xlabel("Recommendation rank")
+        heat_axis.set_title("Target attainment")
+        heat_figure.colorbar(image, ax=heat_axis, label="Normalized attainment")
+        figures = {"Ranked alternatives": score_figure, "Target attainment": heat_figure}
+        for figure in figures.values():
+            apply_chart_style(figure)
+        return figures
+
+    @staticmethod
     def inverse_figure(result: InverseDesignResult) -> Figure:
+        """Backward-compatible combined inverse-design figure."""
         table = result.recommendations.head(15)
         figure = Figure(figsize=(11.0, 5.2), constrained_layout=True)
         score_axis = figure.add_subplot(121)
         heat_axis = figure.add_subplot(122)
         ranks = table["recommendation_rank"].to_numpy(dtype=int)
-        score_axis.barh(ranks.astype(str), table["design_loss"].to_numpy(dtype=float))
-        score_axis.invert_yaxis()
-        score_axis.set_xlabel("Design loss")
-        score_axis.set_ylabel("Recommendation rank")
-        score_axis.set_title("Ranked alternatives")
-        score_axis.grid(True, axis="x", alpha=0.25)
-
+        score_axis.barh(ranks.astype(str), table["design_loss"].to_numpy(dtype=float), label="Design loss")
+        score_axis.invert_yaxis(); score_axis.set_xlabel("Design loss")
+        score_axis.set_ylabel("Recommendation rank"); score_axis.set_title("Ranked alternatives")
         ratios: list[np.ndarray] = []
         labels: list[str] = []
         for target in result.targets:
@@ -1044,9 +1137,9 @@ class OptimizationService:
         image = heat_axis.imshow(matrix, aspect="auto", vmin=0.0, vmax=1.0, cmap="RdYlGn")
         heat_axis.set_yticks(np.arange(len(labels)), labels)
         heat_axis.set_xticks(np.arange(len(table)), table["recommendation_rank"].astype(str))
-        heat_axis.set_xlabel("Recommendation rank")
-        heat_axis.set_title("Target attainment")
+        heat_axis.set_xlabel("Recommendation rank"); heat_axis.set_title("Target attainment")
         figure.colorbar(image, ax=heat_axis, label="Normalized attainment")
+        apply_chart_style(figure)
         return figure
 
     @staticmethod

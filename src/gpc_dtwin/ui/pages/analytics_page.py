@@ -13,7 +13,6 @@ from gpc_dtwin.figure_export import save_square_figure
 from gpc_dtwin.paths import EXPORT_DIR
 from gpc_dtwin.services.analytics_service import AnalyticsService
 from gpc_dtwin.services.data_service import DataService
-from gpc_dtwin.ui.widgets import SectionHeader
 
 
 class AnalyticsPage(QWidget):
@@ -24,12 +23,8 @@ class AnalyticsPage(QWidget):
         self.figure = Figure(figsize=(9, 5), constrained_layout=True)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 22, 24, 24)
+        root.setContentsMargins(24, 16, 24, 24)
         root.setSpacing(14)
-        root.addWidget(SectionHeader(
-            "Visual analytics",
-            "Interactive property comparisons generated from the active dataset."
-        ))
 
         controls = QFrame()
         controls.setObjectName("Card")

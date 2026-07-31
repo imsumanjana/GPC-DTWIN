@@ -25,6 +25,7 @@ from gpc_dtwin.services.optimization_service import (
     OptimizationRunResult, OptimizationService, TargetDefinition, VariableDefinition,
 )
 from gpc_dtwin.ui.models import DataFrameModel
+from gpc_dtwin.ui.figure_tabs import FigureTabs
 from gpc_dtwin.ui.widgets import SectionHeader, ValuePill
 
 
@@ -39,12 +40,8 @@ class OptimizationPage(QWidget):
         self.available_responses: list[str] = []
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 22, 24, 24)
+        root.setContentsMargins(24, 16, 24, 24)
         root.setSpacing(14)
-        root.addWidget(SectionHeader(
-            "Optimization & Inverse Design",
-            "Explore trade-offs, apply engineering constraints, and find material scenarios for selected targets."
-        ))
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self._optimizer_tab(), "Pareto optimizer")
@@ -354,8 +351,8 @@ class OptimizationPage(QWidget):
         inverse_table.setSortingEnabled(True)
         inverse_table.setAlternatingRowColors(True)
         splitter.addWidget(inverse_table)
-        self.inverse_canvas = FigureCanvasQTAgg(Figure(figsize=(8, 5), constrained_layout=True))
-        splitter.addWidget(self.inverse_canvas)
+        self.inverse_figure_tabs = FigureTabs(minimum_canvas_size=(620, 540))
+        splitter.addWidget(self.inverse_figure_tabs)
         splitter.setSizes([720, 700])
         layout.addWidget(splitter, 1)
         return page
@@ -400,16 +397,18 @@ class OptimizationPage(QWidget):
 
     @staticmethod
     def _set_canvas(current: FigureCanvasQTAgg, figure: Figure) -> FigureCanvasQTAgg:
-        parent = current.parentWidget()
-        layout = parent.layout()
-        index = layout.indexOf(current)
-        layout.removeWidget(current)
-        current.setParent(None)
-        current.deleteLater()
-        canvas = FigureCanvasQTAgg(figure)
-        layout.insertWidget(index, canvas)
-        canvas.draw_idle()
-        return canvas
+        """Reuse the existing Qt canvas instead of deleting native widgets mid-session.
+
+        Replacing a canvas with ``deleteLater`` while Qt still has queued paint or
+        event-filter callbacks can produce a native access violation on Windows.
+        Rebinding the figure keeps the widget and its chart-style button stable.
+        """
+        current.setUpdatesEnabled(False)
+        current.figure = figure
+        figure.set_canvas(current)
+        current.setUpdatesEnabled(True)
+        current.draw_idle()
+        return current
 
     @staticmethod
     def _enabled_checkbox(checked: bool = False) -> QCheckBox:
@@ -665,10 +664,20 @@ class OptimizationPage(QWidget):
             tone = "success" if reliability == "A" else "warning" if reliability in {"B", "C"} else "danger"
             self.best_reliability_pill.set_value(reliability, tone)
             self.best_score_pill.set_value(f"{float(best['compromise_score']):.3f}")
+        dropped = []
+        if "dropped_predictors" in result.surrogate_summary.columns:
+            dropped = [
+                value for value in result.surrogate_summary["dropped_predictors"].astype(str)
+                if value.strip()
+            ]
+        adaptation = (
+            " Response-specific blank inputs were omitted automatically; review the surrogate table."
+            if dropped else ""
+        )
         self.optimization_detail.setText(
             f"Constraint-aware NSGA-II · {result.method} surrogates · {result.population_size} candidates per generation · "
             f"{result.generations} generations · {result.confidence_percent:.0f}% intervals. "
-            "Review surrogate validation and reliability before selecting a scenario."
+            "Review surrogate validation and reliability before selecting a scenario." + adaptation
         )
 
     def run_inverse_design(self) -> None:
@@ -700,9 +709,9 @@ class OptimizationPage(QWidget):
 
     def _display_inverse(self, result: InverseDesignResult) -> None:
         self.inverse_model.set_dataframe(result.recommendations)
-        figure = self.service.inverse_figure(result)
-        self.figures["inverse"] = figure
-        self.inverse_canvas = self._set_canvas(self.inverse_canvas, figure)
+        figures = self.service.inverse_figures(result)
+        self.figures["inverse"] = next(iter(figures.values()))
+        self.inverse_figure_tabs.set_figures(figures)
         self.inverse_evaluated_pill.set_value(result.candidates_evaluated)
         if not result.recommendations.empty:
             best = result.recommendations.iloc[0]
@@ -786,7 +795,9 @@ class OptimizationPage(QWidget):
         self._save_figure(self.figures.get(key), self, f"GPC_DTwin_{key}.png")
 
     def export_inverse_figure(self) -> None:
-        self._save_figure(self.figures.get("inverse"), self, "GPC_DTwin_Inverse_Design.png")
+        self._save_figure(
+            self.inverse_figure_tabs.current_figure(), self, "GPC_DTwin_Inverse_Design.png"
+        )
 
     def save_optimization(self) -> None:
         if self.current_optimization is None:

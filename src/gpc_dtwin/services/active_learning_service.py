@@ -16,6 +16,7 @@ from matplotlib.figure import Figure
 from scipy.stats import norm, qmc
 
 from gpc_dtwin import __version__
+from gpc_dtwin.chart_style import apply_chart_style
 from gpc_dtwin.columns import COLUMN_LABELS, DATA_COLUMNS, MODEL_NUMERIC_PREDICTORS
 from gpc_dtwin.services.digital_twin_service import DigitalTwinService, TwinBuildResult
 
@@ -667,21 +668,26 @@ class ActiveLearningService:
         return figure
 
     @staticmethod
-    def recommendation_figure(result: ActiveLearningRunResult) -> Figure:
+    def recommendation_figures(result: ActiveLearningRunResult) -> dict[str, Figure]:
         table = result.recommendations.sort_values("recommendation_rank")
         ranks = table["recommendation_rank"].to_numpy(dtype=int)
         mean = table["predicted_mean"].to_numpy(dtype=float)
         lower = table["lower_bound"].to_numpy(dtype=float)
         upper = table["upper_bound"].to_numpy(dtype=float)
-        figure = Figure(figsize=(7.0, 7.0), constrained_layout=True)
-        response_axis = figure.add_subplot(211)
-        score_axis = figure.add_subplot(212)
+
+        response_figure = Figure(figsize=(6.6, 5.8), constrained_layout=True)
+        response_axis = response_figure.add_subplot(111)
         yerr = np.vstack([mean - lower, upper - mean])
-        response_axis.errorbar(ranks, mean, yerr=yerr, fmt="o", capsize=3)
+        response_axis.errorbar(
+            ranks, mean, yerr=yerr, fmt="o", capsize=3,
+            label="Estimated response ± interval",
+        )
+        response_axis.set_xlabel("Recommendation rank")
         response_axis.set_ylabel(COLUMN_LABELS.get(result.response, result.response))
         response_axis.set_title("Estimated response and prediction interval")
-        response_axis.grid(True, alpha=0.22)
 
+        score_figure = Figure(figsize=(6.6, 5.8), constrained_layout=True)
+        score_axis = score_figure.add_subplot(111)
         score_axis.plot(ranks, table["acquisition_score"], marker="o", label="Acquisition")
         score_axis.plot(ranks, table["novelty_score"], marker="s", label="Novelty")
         score_axis.plot(
@@ -692,8 +698,38 @@ class ActiveLearningService:
         score_axis.set_xlabel("Recommendation rank")
         score_axis.set_ylabel("Normalized score")
         score_axis.set_ylim(-0.05, 1.05)
-        score_axis.grid(True, alpha=0.22)
-        score_axis.legend(loc="best")
+        score_axis.set_title("Priority components")
+        figures = {"Response intervals": response_figure, "Priority scores": score_figure}
+        for figure in figures.values():
+            apply_chart_style(figure)
+        return figures
+
+    @staticmethod
+    def recommendation_figure(result: ActiveLearningRunResult) -> Figure:
+        """Backward-compatible combined recommendation view."""
+        table = result.recommendations.sort_values("recommendation_rank")
+        ranks = table["recommendation_rank"].to_numpy(dtype=int)
+        mean = table["predicted_mean"].to_numpy(dtype=float)
+        lower = table["lower_bound"].to_numpy(dtype=float)
+        upper = table["upper_bound"].to_numpy(dtype=float)
+        figure = Figure(figsize=(7.0, 7.0), constrained_layout=True)
+        response_axis = figure.add_subplot(211)
+        score_axis = figure.add_subplot(212)
+        yerr = np.vstack([mean - lower, upper - mean])
+        response_axis.errorbar(ranks, mean, yerr=yerr, fmt="o", capsize=3,
+                               label="Estimated response ± interval")
+        response_axis.set_ylabel(COLUMN_LABELS.get(result.response, result.response))
+        response_axis.set_title("Estimated response and prediction interval")
+        score_axis.plot(ranks, table["acquisition_score"], marker="o", label="Acquisition")
+        score_axis.plot(ranks, table["novelty_score"], marker="s", label="Novelty")
+        score_axis.plot(
+            ranks, ActiveLearningService._minmax(table["normalized_uncertainty_percent"].to_numpy()),
+            marker="^", label="Uncertainty",
+        )
+        score_axis.set_xlabel("Recommendation rank")
+        score_axis.set_ylabel("Normalized score")
+        score_axis.set_ylim(-0.05, 1.05)
+        apply_chart_style(figure)
         return figure
 
     @staticmethod

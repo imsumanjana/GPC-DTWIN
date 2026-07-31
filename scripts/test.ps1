@@ -16,6 +16,13 @@ $env:TEMP = $RuntimeTemp
 $env:TMP = $RuntimeTemp
 $env:TMPDIR = $RuntimeTemp
 $env:QT_QPA_PLATFORM = "offscreen"
+$env:PYTHONFAULTHANDLER = "1"
+$env:QT_OPENGL = "software"
+$env:QT_QUICK_BACKEND = "software"
+$env:OMP_NUM_THREADS = "1"
+$env:OPENBLAS_NUM_THREADS = "1"
+$env:MKL_NUM_THREADS = "1"
+$env:NUMEXPR_NUM_THREADS = "1"
 & $Python -m pytest --basetemp="$PytestTemp"
 if ($LASTEXITCODE -ne 0) { throw "Test suite failed." }
 & $Python -m gpc_dtwin.ui_audit

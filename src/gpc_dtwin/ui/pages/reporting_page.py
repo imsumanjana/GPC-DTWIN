@@ -35,12 +35,8 @@ class ReportingPage(QWidget):
         self.last_verification: BundleVerificationResult | None = None
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 22, 24, 24)
+        root.setContentsMargins(24, 16, 24, 24)
         root.setSpacing(14)
-        root.addWidget(SectionHeader(
-            "Reports & Provenance",
-            "Create self-contained analytical reports, record reproducibility metadata, and verify exported bundles.",
-        ))
 
         cards = QGridLayout()
         cards.setHorizontalSpacing(12)

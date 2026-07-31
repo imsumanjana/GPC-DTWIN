@@ -101,3 +101,11 @@ def test_run_storage_and_figures(prepared_results, tmp_path):
     assert len(service.inverse_figure(inverse).axes) >= 2
     service.delete_result(optimization_path)
     assert not optimization_path.exists()
+
+
+def test_inverse_design_outputs_are_separate_figures(prepared_results):
+    service, _, inverse = prepared_results
+    figures = service.inverse_figures(inverse)
+    assert set(figures) == {"Ranked alternatives", "Target attainment"}
+    assert len(figures["Ranked alternatives"].axes) == 1
+    assert len(figures["Target attainment"].axes) >= 2  # main plot and colour bar

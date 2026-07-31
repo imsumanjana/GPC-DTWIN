@@ -33,7 +33,7 @@ def test_manifest_preview_contains_fingerprints_and_attribution(tmp_path):
         {"Models": artifact_root},
     )
 
-    assert manifest["application"]["version"] == "1.0.1"
+    assert manifest["application"]["version"] == "1.1.3"
     assert manifest["dataset"]["records"] == len(dataframe)
     assert len(manifest["dataset"]["sha256"]) == 64
     assert manifest["quality"]["total"] == len(audit)

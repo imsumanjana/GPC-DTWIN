@@ -30,6 +30,21 @@ def run_health_check(database_path: Path | str = DATABASE_PATH) -> list[HealthCh
     items: list[HealthCheckItem] = []
     ensure_user_directories()
 
+    try:
+        from PyQt6.QtCore import PYQT_VERSION_STR, QT_VERSION_STR, qVersion
+        runtime = qVersion()
+        matched = runtime == QT_VERSION_STR
+        items.append(HealthCheckItem(
+            "Qt runtime", matched,
+            f"PyQt {PYQT_VERSION_STR} · compiled Qt {QT_VERSION_STR} · runtime Qt {runtime}",
+        ))
+    except ModuleNotFoundError:
+        # Service-only validation environments may not include Qt. The Windows
+        # release check executes this item after the pinned GUI dependencies install.
+        pass
+    except Exception as error:
+        items.append(HealthCheckItem("Qt runtime", False, str(error)))
+
     for label, path in (("Reference dataset", REFERENCE_DATASET), ("CSV template", TEMPLATE_DATASET)):
         items.append(HealthCheckItem(label, path.is_file(), str(path)))
 

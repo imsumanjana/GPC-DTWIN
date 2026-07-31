@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import faulthandler
 import logging
 import os
 import sys
@@ -10,6 +11,20 @@ import traceback
 
 if __name__ == "__main__" and __package__ in (None, ""):
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+# Prefer software rendering for a stable cross-driver desktop release. These
+# defaults can still be overridden explicitly by an advanced user.
+os.environ.setdefault("QT_OPENGL", "software")
+os.environ.setdefault("QT_QUICK_BACKEND", "software")
+os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+try:
+    faulthandler.enable(all_threads=True)
+except (RuntimeError, OSError):
+    pass
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QIcon
@@ -62,6 +77,7 @@ def main() -> int:
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
     app = QApplication(sys.argv[:1])
+    app.setQuitOnLastWindowClosed(True)
     app.setStyle("Fusion")
     app.setApplicationName(APP_NAME)
     app.setOrganizationName(ORGANIZATION_NAME)
@@ -89,8 +105,11 @@ def main() -> int:
         return 1
 
     window = MainWindow(context)
+    app.aboutToQuit.connect(window.prepare_shutdown)
     window.show()
-    return app.exec()
+    exit_code = app.exec()
+    window.prepare_shutdown()
+    return exit_code
 
 
 if __name__ == "__main__":

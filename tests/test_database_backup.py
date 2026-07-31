@@ -1,3 +1,6 @@
+import pytest
+pytest.importorskip("PyQt6")
+
 from pathlib import Path
 
 from gpc_dtwin.context import ApplicationContext

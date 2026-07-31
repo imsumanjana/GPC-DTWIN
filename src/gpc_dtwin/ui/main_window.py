@@ -17,9 +17,7 @@ from gpc_dtwin.metadata import (
 )
 from gpc_dtwin.paths import APP_DATA_ROOT, BACKUP_DIR, EXPORT_DIR, ICON_PATH
 from gpc_dtwin.ui.pages.active_learning_page import ActiveLearningPage
-from gpc_dtwin.ui.pages.analytics_page import AnalyticsPage
-from gpc_dtwin.ui.pages.audit_page import AuditPage
-from gpc_dtwin.ui.pages.database_page import DatabasePage
+from gpc_dtwin.ui.pages.data_workspace_page import DataWorkspacePage
 from gpc_dtwin.ui.pages.digital_twin_page import DigitalTwinPage
 from gpc_dtwin.ui.pages.modeling_page import ModelingPage
 from gpc_dtwin.ui.pages.ndt_durability_page import NDTDurabilityPage
@@ -27,8 +25,8 @@ from gpc_dtwin.ui.pages.optimization_page import OptimizationPage
 from gpc_dtwin.ui.pages.overview_page import OverviewPage
 from gpc_dtwin.ui.pages.reporting_page import ReportingPage
 from gpc_dtwin.ui.pages.settings_page import SettingsPage
-from gpc_dtwin.ui.pages.statistics_page import StatisticsPage
 from gpc_dtwin.ui.pages.visualization_3d_page import Visualization3DPage
+from gpc_dtwin.ui.chart_style_dialog import ChartStyleOverlayManager
 from gpc_dtwin.ui.polish import polish_workspace
 from gpc_dtwin.ui.scrolling import ResponsiveScrollArea, scrollable_page
 from gpc_dtwin.ui.theme import stylesheet
@@ -57,10 +55,10 @@ class NavButton(QPushButton):
 class MainWindow(QMainWindow):
     PAGE_META = [
         ("Overview", "Material-test coverage, quality, and performance at a glance"),
-        ("Data Explorer", "Search, filter, review, and manage structured records"),
-        ("Quality Check", "Deterministic checks for consistency and completeness"),
-        ("Visual Analytics", "Interactive property comparisons and heatmaps"),
-        ("Statistical Analysis", "Descriptive statistics, group comparison, and regression"),
+        (
+            "Data Explorer",
+            "Records, quality checks, visual analysis, and statistical analysis in one workspace",
+        ),
         ("Predictive Models", "Cross-validated model comparison, prediction, and model storage"),
         ("Digital Twin", "Uncertainty-aware prediction, calibration, reliability, and response maps"),
         ("3D Explorer", "Interactive response surfaces, uncertainty landscapes, and specimen fields"),
@@ -71,11 +69,10 @@ class MainWindow(QMainWindow):
         ("Settings", "Appearance, storage, attribution, and dataset information"),
     ]
     NAV_ITEMS = [
-        ("O", "Overview"), ("D", "Data Explorer"), ("Q", "Quality Check"),
-        ("V", "Visual Analytics"), ("S", "Statistical Analysis"),
-        ("M", "Predictive Models"), ("T", "Digital Twin"), ("3D", "3D Explorer"),
-        ("ND", "NDT & Durability"), ("OP", "Optimization"),
-        ("AL", "Active Learning"), ("RP", "Reports & Provenance"), ("⚙", "Settings"),
+        ("O", "Overview"), ("D", "Data Explorer"), ("M", "Predictive Models"),
+        ("T", "Digital Twin"), ("3D", "3D Explorer"), ("ND", "NDT & Durability"),
+        ("OP", "Optimization"), ("AL", "Active Learning"),
+        ("RP", "Reports & Provenance"), ("⚙", "Settings"),
     ]
 
     def __init__(self, context, parent=None):
@@ -84,6 +81,7 @@ class MainWindow(QMainWindow):
         self.settings = QSettings(ORGANIZATION_NAME, SETTINGS_APPLICATION)
         self._sidebar_expanded = True
         self._responsive_sidebar = True
+        self._shutdown_prepared = False
         self.setWindowTitle(f"{APP_NAME} v{__version__}")
         if ICON_PATH.is_file():
             self.setWindowIcon(QIcon(str(ICON_PATH)))
@@ -107,8 +105,7 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget()
         self.pages = [
-            OverviewPage(context), DatabasePage(context), AuditPage(context),
-            AnalyticsPage(context), StatisticsPage(context), ModelingPage(context),
+            OverviewPage(context), DataWorkspacePage(context), ModelingPage(context),
             DigitalTwinPage(context), Visualization3DPage(context),
             NDTDurabilityPage(context), OptimizationPage(context),
             ActiveLearningPage(context), ReportingPage(context), SettingsPage(context),
@@ -119,6 +116,9 @@ class MainWindow(QMainWindow):
             container = scrollable_page(page, minimum_width=920)
             self.page_containers.append(container)
             self.stack.addWidget(container)
+        # One palette icon is attached to every chart canvas. New canvases created
+        # after a calculation are detected automatically by the manager.
+        self.chart_style_manager = ChartStyleOverlayManager(self.pages, self.settings, self)
         self.pages[-1].theme_requested.connect(self.apply_theme)
         self.pages[-1].layout_reset_requested.connect(self.reset_window_layout)
         main_layout.addWidget(self.stack, 1)
@@ -131,7 +131,7 @@ class MainWindow(QMainWindow):
         self.update_dataset_label()
         self.apply_theme(str(self.settings.value("theme", "Dark")).lower())
         self._restore_layout()
-        self.navigate(int(self.settings.value("page", 0)))
+        self.navigate(self._restored_page_index())
 
     def _build_sidebar(self) -> QFrame:
         sidebar = QFrame()
@@ -276,14 +276,27 @@ class MainWindow(QMainWindow):
         file_menu.addAction(self._action("Exit", self.close, "Alt+F4"))
 
         data_menu = self.menuBar().addMenu("Data")
+        for label, tab_index in [
+            ("Data Explorer", 0),
+            ("Quality Check", 1),
+            ("Visual Analysis", 2),
+            ("Statistical Analysis", 3),
+        ]:
+            data_menu.addAction(
+                self._action(
+                    label,
+                    lambda checked=False, i=tab_index: self.open_data_workspace_tab(i),
+                )
+            )
+        data_menu.addSeparator()
         data_menu.addAction(self._action("Run quality check", self.context.run_audit, "Ctrl+Q"))
         data_menu.addAction(self._action("Reload database", self.refresh_project, "F5"))
 
         analysis_menu = self.menuBar().addMenu("Analysis")
         for label, index in [
-            ("Predictive models", 5), ("Digital twin", 6), ("3D explorer", 7),
-            ("NDT and durability", 8), ("Optimization", 9),
-            ("Active learning", 10), ("Reports and provenance", 11),
+            ("Predictive models", 2), ("Digital twin", 3), ("3D explorer", 4),
+            ("NDT and durability", 5), ("Optimization", 6),
+            ("Active learning", 7), ("Reports and provenance", 8),
         ]:
             analysis_menu.addAction(self._action(label, lambda checked=False, i=index: self.navigate(i)))
 
@@ -309,6 +322,32 @@ class MainWindow(QMainWindow):
             label.setOpenExternalLinks(True)
             label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
         dialog.exec()
+
+    def _restored_page_index(self) -> int:
+        """Migrate the former thirteen-page index into the unified ten-page layout."""
+        try:
+            saved = int(self.settings.value("page", 0))
+        except (TypeError, ValueError):
+            saved = 0
+
+        schema = str(self.settings.value("navigationSchema", "1.1.2"))
+        if schema != "1.1.3":
+            migration = {
+                0: 0,
+                1: 1, 2: 1, 3: 1, 4: 1,
+                5: 2, 6: 3, 7: 4, 8: 5,
+                9: 6, 10: 7, 11: 8, 12: 9,
+            }
+            saved = migration.get(saved, 0)
+            self.settings.setValue("navigationSchema", "1.1.3")
+            self.settings.setValue("page", saved)
+        return max(0, min(saved, len(self.PAGE_META) - 1))
+
+    def open_data_workspace_tab(self, tab_index: int) -> None:
+        self.navigate(1)
+        data_workspace = self.pages[1]
+        if isinstance(data_workspace, DataWorkspacePage):
+            data_workspace.set_current_tab(tab_index)
 
     def navigate(self, index: int) -> None:
         index = max(0, min(index, self.stack.count() - 1))
@@ -460,7 +499,18 @@ class MainWindow(QMainWindow):
         self.settings.remove("sidebarExpanded")
         self.context.message.emit("Window layout reset.")
 
+    def prepare_shutdown(self) -> None:
+        """Detach chart helpers before Qt destroys native Matplotlib widgets."""
+        if self._shutdown_prepared:
+            return
+        self._shutdown_prepared = True
+        manager = getattr(self, "chart_style_manager", None)
+        if manager is not None:
+            manager.shutdown()
+        self.settings.sync()
+
     def closeEvent(self, event: QCloseEvent) -> None:
         self.settings.setValue("windowGeometry", self.saveGeometry())
         self.settings.setValue("windowState", self.saveState())
+        self.prepare_shutdown()
         super().closeEvent(event)
