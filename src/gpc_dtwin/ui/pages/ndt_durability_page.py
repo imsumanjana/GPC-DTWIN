@@ -414,6 +414,8 @@ class NDTDurabilityPage(QWidget):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setMinimumWidth(390)
         scroll.setMaximumWidth(470)
         controls = QWidget()

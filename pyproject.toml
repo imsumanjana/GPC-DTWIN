@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gpc-dtwin"
-version = "0.8.0"
-description = "Desktop geopolymer-concrete analytics platform with predictive modelling, digital twins, 3D exploration, NDT fusion, durability assessment, optimization, inverse design, and active learning"
+version = "1.0.1"
+description = "Release-ready desktop platform for geopolymer-concrete analytics, digital twins, optimization, active learning, and reproducible reporting"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
-authors = [{name = "GPC-DTwin Team"}]
+authors = [{name = "Dr. Suman Jana"}]
 dependencies = [
   "PyQt6>=6.8,<7",
   "numpy>=2.0,<3",
@@ -29,6 +29,7 @@ dev = [
 
 [project.scripts]
 gpc-dtwin = "gpc_dtwin.app:main"
+gpc-dtwin-ui-check = "gpc_dtwin.ui_audit:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

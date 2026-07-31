@@ -1,4 +1,7 @@
-GPC-DTwin v0.8
+GPC-DTwin v1.0.1
 
-This repository contains the GPC-DTwin desktop application and its supporting resources.
+Copyright © 2026 Dr. Suman Jana. All rights reserved.
+ORCID: https://orcid.org/0000-0002-9850-2169
+
+This repository contains the GPC-DTwin desktop application and supporting resources.
 Third-party Python packages remain subject to their respective licenses.

@@ -1,34 +1,29 @@
-# Changelog
+# Change Log
 
-## 0.1.2 — Windows pytest temporary-directory permission fix
+## Version 1.0.1
 
-- Fixed `PermissionError: [WinError 5] Access is denied` under
-  `AppData\Local\Temp\pytest-of-<user>`.
-- Setup and test scripts now use repository-local writable temporary directories.
-- Added a `tests/conftest.py` fallback so direct pytest runs also use local temp storage.
-- Removed duplicate pytest configuration from `pyproject.toml`.
-- Setup now captures and validates each native process exit code before reporting success.
-- Runtime temporary files are excluded through `.gitignore`.
+- Added compatibility with pandas 3.x when measured values are entered into exported active-learning experiment plans.
+- Replaced Windows file-level SQLite restoration with SQLite's native backup API.
+- Added regression coverage for editable numeric result fields and database restoration.
+- Filtered a specific upstream joblib/NumPy 2.5 deprecation warning during automated tests.
+- Updated package, executable, report, and release metadata to version 1.0.1.
 
-## 0.1.1 — Windows Python runtime detection fix
+## Version 1.0.0
 
-- Fixed `setup.ps1` terminating before fallback when Python 3.12 was not installed.
-- Added safe detection of Python 3.11, 3.12, and 3.13.
-- Added clear installation guidance when no supported runtime is available.
-- Added automatic cleanup of an incomplete `.venv`.
-- Added exit-code checks for virtual-environment creation, dependency installation, and tests.
+- Finalized the thirteen-workspace release interface.
+- Added adaptive collapsible navigation and horizontally scrollable top actions.
+- Preserved theme, window geometry, navigation state, and last workspace.
+- Added application icon, Windows file metadata, and improved light/dark styling.
+- Added writable per-user storage for packaged builds and portable storage for source runs.
+- Added stable database naming with automatic migration from the latest pre-release database.
+- Added automatic backup before dataset replacement and manual database backup/restore.
+- Added rotating diagnostic logs and a global error dialog with local log location.
+- Added local application health checks.
+- Added automated multi-resolution interface checking and optional screenshot capture.
+- Added release-check and improved Windows-build scripts.
+- Retained square 6 × 6 inch, 600 dpi figure export across every analytical workspace.
+- Retained scrollable workspaces and dense panels so content is not compressed unnecessarily.
 
-## v0.1.0 — Foundation and Data Audit
+Copyright © 2026 Dr. Suman Jana. All rights reserved.
 
-- Added modern PyQt6 application shell with sidebar navigation.
-- Added dark and light themes.
-- Added automatic first-run import of the bundled experimental dataset.
-- Added SQLite persistence for all 44 dataset columns.
-- Added searchable and filterable experimental database page.
-- Added verification-status updates without modifying source CSV files.
-- Added deterministic audit rules and severity summaries.
-- Added dashboard charts and metrics.
-- Added eight analytical chart modes and publication-image export.
-- Added CSV database export.
-- Added Windows setup, run, test, and build scripts.
-- Added service-layer and optional GUI smoke tests.
+ORCID: https://orcid.org/0000-0002-9850-2169

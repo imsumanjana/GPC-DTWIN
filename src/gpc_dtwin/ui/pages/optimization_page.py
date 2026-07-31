@@ -64,6 +64,8 @@ class OptimizationPage(QWidget):
 
         controls_scroll = QScrollArea()
         controls_scroll.setWidgetResizable(True)
+        controls_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        controls_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         controls_scroll.setMinimumWidth(390)
         controls_scroll.setMaximumWidth(500)
         controls = QWidget()

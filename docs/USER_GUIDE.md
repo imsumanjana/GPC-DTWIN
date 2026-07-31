@@ -1,120 +1,53 @@
 # User Guide
 
-## Overview
+## Starting the application
 
-The Overview page presents record counts, mix coverage, measurement groups, review flags, quality findings, and summary charts.
+Run `scripts/run.ps1` after setup. The application opens the local database and loads the bundled
+reference dataset when the database is empty.
 
-## Data Explorer
+## Interface behavior
 
-Use the search field and Mix, Group, and Status filters to narrow the dataset. The Essential fields toggle hides extended metadata without deleting it. Select a row and assign a status to record the review outcome.
+The navigation panel collapses automatically on narrower windows and can be toggled from the top-left
+button or View menu. Every workspace is placed inside a responsive scroll area. Dense control panels,
+tables, figures, and long tab sets retain readable natural dimensions and expose scrollbars when needed.
+The selected theme, last workspace, sidebar state, and window geometry are preserved.
 
-## Quality Check
+## Data workflow
 
-The quality engine checks identifiers, duplicate records, binder totals, numerical ranges, required group values, dataset metadata, composition labels, and durability calculations. It reports findings without changing the stored data.
+1. Import a compatible 44-field CSV from Data Explorer or the main toolbar.
+2. Confirm replacement; the application creates an automatic database backup.
+3. Run Quality Check and review critical, warning, and information findings.
+4. Update verification states where appropriate.
+5. Use Visual Analytics and Statistical Analysis for exploratory work.
+6. Use Predictive Models, Digital Twin, NDT & Durability, Optimization, and Active Learning as required.
+7. Use Reports & Provenance to create a report, manifest, or reproducibility bundle.
 
-## Visual Analytics
+## Backup and restore
 
-Select a chart and, where applicable, a mix. Figures can be exported as PNG, PDF, SVG, or TIFF.
+Use **File → Back up database** to create a manual SQLite backup. Use **File → Restore database** to
+restore a compatible backup. The current database is backed up automatically before restoration.
 
-## Statistical Analysis
+## Reports & Provenance
 
-Descriptive statistics report count, central tendency, spread, quartiles, missing values, and coefficient of variation. Correlation supports Pearson and Spearman methods. Group comparison uses one-way ANOVA and reports F, p, and eta-squared. Regression uses grouped cross-validation by mix whenever enough distinct mixes are available.
+The report builder accepts a title, project label, and prepared-by name. Optional content includes
+analytical figures, a dataset preview, and a stored-artifact inventory. Generated report folders are
+kept in the configured report library.
 
-## Predictive Models
+The bundle export writes a ZIP file to the selected location. Bundle verification recalculates file
+fingerprints without importing or changing project data.
 
-Choose a response, predictors, and algorithms, then select Compare models. The ranking is based on cross-validated RMSE, with MAE used as the next comparison. Diagnostics show observed versus predicted values and residuals. Feature influence uses permutation importance.
+## Figure export
 
-The Prediction tab applies the selected model to a single scenario or all compatible rows in the active dataset. The Model library stores reusable model files and matching metadata in `models/trained`.
+All figure-export buttons produce square 600 dpi output through the common export engine. Raster
+figures are 3600 × 3600 pixels.
 
-Records marked EXCLUDED are never used. Records marked REQUIRES_REVIEW or CONFLICTING are omitted by default and can be included explicitly.
+## Application check
 
-## Digital Twin
+Open Settings and select **Run application check** to verify bundled resources, writable storage,
+database access, schema compatibility, and figure export.
 
-Select a response and predictors, choose Gaussian Process or Forest Ensemble, and build the twin.
-Review cross-validated interval coverage before using scenario estimates. The Prediction tab shows
-confidence bounds and reliability classes. The Response Maps tab varies two fitted numeric inputs and
-keeps other inputs at fitted defaults. Saved twins are available in the Twin Library.
+## Copyright and attribution
 
-## 3D Explorer
+Copyright © 2026 Dr. Suman Jana. All rights reserved.
 
-The Response Surface tab varies two numeric inputs across the fitted domain and displays estimated
-response, relative uncertainty, prediction-interval width, or reliability class as a rotatable 3D
-surface. Use the observation overlay to compare fitted terrain with available measurements. Camera
-presets and manual view angles are provided.
-
-The Specimen Field tab creates an estimated field inside a 150 mm cube using aggregate property
-values for the selected mix. The view is a normalized visual representation, not a spatial scan or
-internal tomography result. Surface grids, specimen fields, and figures can be exported.
-
-## NDT and Durability
-
-### NDT fusion
-
-Choose the destructive-strength reference group, age, curing filter, and regression algorithm. Include
-review-marked records only when their use is understood. Select Compare NDT input sets to rank UPV,
-rebound, composition, and combined inputs. Use the view selector for observed-versus-estimated,
-residual, and RMSE charts. Save the best model when its validation is acceptable.
-
-### NDT estimate
-
-Use the active best model or load a saved model. Enter available NDT and composition values. The
-active model uses only the fields in its fitted input set. Review the reliability class and range note
-with the estimated compressive strength.
-
-### Durability profile
-
-Set strength-retention and mass-stability weights, then select Calculate profile. The ranking table,
-score chart, initial-versus-residual chart, retention heatmap, and mass-change heatmap can be exported.
-The score formula is displayed beside the controls.
-
-### Durability estimator
-
-Select a response, method, confidence level, and predictor fields. Build the estimator and review
-cross-validated RMSE, R², and interval coverage. Scenario estimates report confidence bounds and
-reliability. The response-curve tool varies a numeric predictor over its fitted range.
-
-## Import and export
-
-Use Import CSV to replace the active local dataset after confirmation. Use Export CSV to save the current database records. A blank compatible template is available in `data/templates`.
-
-## Optimization and Inverse Design
-
-### Pareto optimizer
-
-Select surrogate inputs, then configure objectives, optional constraints, and decision-variable bounds.
-Use binder closure when FA, GGBS, and SF should total 100%. Choose the surrogate method, confidence
-level, population, generation count, uncertainty penalty, and random seed before starting the search.
-
-The Pareto Front tab displays ranked non-dominated solutions and a trade-off figure. Solution Profiles
-shows normalized decision variables and objective responses. Final Population includes feasible and
-constraint-limited candidates. Surrogate Validation reports cross-validated performance for every
-response model used by the search.
-
-The first solution is the highest-ranked compromise for the selected objective weights. Review its
-response intervals, range flags, reliability class, and surrogate metrics before applying it.
-
-### Inverse design
-
-Enable one or more response targets, select At least, At most, or Closest, and assign a target weight.
-Inverse design uses the surrogate inputs, decision-variable bounds, method, uncertainty penalty, and
-binder-closure setting from the Pareto optimizer tab. The result table ranks diverse alternatives by
-design loss and target satisfaction.
-
-### Run library
-
-Save either result type to retain fitted surrogates and result tables. Saved runs are stored in
-`models/optimizations` and can be reloaded from the Run Library.
-
-## Active Learning
-
-Select a response, uncertainty method, predictors, experiment variables, bounds, and acquisition
-strategy. The recommendation table reports uncertainty, reliability, novelty, expected improvement,
-and acquisition score. Use Experiment Plan export to create a compatible CSV with blank measured
-response fields. After testing, enter measured results, review the data status, append the completed
-CSV, and evaluate the model update. Saved runs are stored in `models/active_learning`.
-
-## Figure export and scrolling
-
-All exported figures use a square 6 × 6 inch canvas at 600 dpi. Dense pages and control panels show
-scrollbars when their natural dimensions exceed the available area.
-
+ORCID: https://orcid.org/0000-0002-9850-2169

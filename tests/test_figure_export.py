@@ -37,5 +37,5 @@ def test_all_figure_actions_use_common_export_helper():
             helper_imports += 1
         if ".savefig(" in text and path.name != "figure_export.py":
             savefig_locations.append(str(path.relative_to(root)))
-    assert helper_imports >= 8
+    assert helper_imports >= 9
     assert savefig_locations == []

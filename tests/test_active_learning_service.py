@@ -59,6 +59,7 @@ def test_active_learning_recommendations_and_plan():
     assert list(plan.columns) == DATA_COLUMNS
     assert len(plan) == 5
     assert plan["compressive_strength_mpa"].eq("").all()
+    assert plan["compressive_strength_mpa"].dtype == object
     assert plan["record_id"].is_unique
     assert plan["notes"].str.contains("Estimated", case=False).all()
 

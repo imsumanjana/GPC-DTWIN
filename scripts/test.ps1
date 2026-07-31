@@ -18,4 +18,6 @@ $env:TMPDIR = $RuntimeTemp
 $env:QT_QPA_PLATFORM = "offscreen"
 & $Python -m pytest --basetemp="$PytestTemp"
 if ($LASTEXITCODE -ne 0) { throw "Test suite failed." }
-Write-Host "[GPC-DTwin] All tests passed." -ForegroundColor Green
+& $Python -m gpc_dtwin.ui_audit
+if ($LASTEXITCODE -ne 0) { throw "Interface check failed." }
+Write-Host "[GPC-DTwin] All tests and interface checks passed." -ForegroundColor Green

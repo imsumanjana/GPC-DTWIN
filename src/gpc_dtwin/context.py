@@ -1,13 +1,20 @@
 """Shared application state and signals."""
 
 from __future__ import annotations
+
+from datetime import datetime
 from pathlib import Path
+import shutil
+
 import pandas as pd
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from .columns import VERIFICATION_STATES
 from .database import SQLiteRepository
-from .paths import DATABASE_PATH, REFERENCE_DATASET
+from .paths import (
+    BACKUP_DIR, DATABASE_PATH, LEGACY_DATABASE_PATHS, REFERENCE_DATASET,
+    ensure_user_directories,
+)
 from .services.audit_service import AuditService
 from .services.data_service import DataService
 
@@ -26,23 +33,70 @@ class ApplicationContext(QObject):
         self.dataframe = pd.DataFrame()
         self.audit_issues = pd.DataFrame()
         self.last_import_path: Path | None = None
+        self.last_backup_path: Path | None = None
 
     def bootstrap(self) -> None:
+        ensure_user_directories()
+        self._migrate_legacy_database()
         self.repository.initialize()
         if self.repository.count() == 0:
             if not self.reference_dataset.exists():
                 raise FileNotFoundError(
                     f"Bundled reference dataset was not found: {self.reference_dataset}"
                 )
-            self.import_csv(self.reference_dataset, emit=False)
-            self.message.emit("Reference dataset loaded into the project database.")
+            self.import_csv(self.reference_dataset, emit=False, create_backup=False)
+            self.message.emit("Reference dataset loaded into the local database.")
         else:
             self.reload(emit=False)
         self.run_audit(emit=False)
 
-    def import_csv(self, path: Path | str, emit: bool = True) -> None:
+    def _migrate_legacy_database(self) -> None:
+        if self.database_path.exists():
+            return
+        for candidate in LEGACY_DATABASE_PATHS:
+            if candidate.resolve() == self.database_path.resolve() or not candidate.is_file():
+                continue
+            try:
+                SQLiteRepository.validate_database(candidate)
+                self.database_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(candidate, self.database_path)
+                return
+            except Exception:
+                continue
+
+    @staticmethod
+    def _backup_name(prefix: str = "gpc_dtwin") -> str:
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return f"{prefix}_{stamp}.sqlite3"
+
+    def backup_database(self, destination: Path | str | None = None, emit: bool = True) -> Path:
+        destination = Path(destination) if destination else BACKUP_DIR / self._backup_name()
+        path = self.repository.backup(destination)
+        self.last_backup_path = path
+        if emit:
+            self.message.emit(f"Database backup created: {path.name}.")
+        return path
+
+    def restore_database(self, source: Path | str, emit: bool = True) -> Path:
+        source = Path(source)
+        if self.repository.count() > 0:
+            self.backup_database(emit=False)
+        path = self.repository.restore(source)
+        self.reload(emit=False)
+        self.run_audit(emit=False)
+        if emit:
+            self.data_changed.emit()
+            self.audit_changed.emit()
+            self.message.emit(f"Database restored from {source.name}.")
+        return path
+
+    def import_csv(
+        self, path: Path | str, emit: bool = True, create_backup: bool = True
+    ) -> None:
         path = Path(path)
         dataframe = DataService.load_csv(path)
+        if create_backup and self.database_path.exists() and self.repository.count() > 0:
+            self.backup_database(emit=False)
         self.repository.replace_records(dataframe)
         self.last_import_path = path
         self.reload(emit=False)
@@ -51,7 +105,6 @@ class ApplicationContext(QObject):
             self.data_changed.emit()
             self.audit_changed.emit()
             self.message.emit(f"Imported {len(dataframe)} records from {path.name}.")
-
 
     def append_csv(self, path: Path | str, emit: bool = True) -> int:
         """Append compatible completed records without replacing the active dataset."""

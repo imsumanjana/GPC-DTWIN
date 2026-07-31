@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (
-    QFrame, QLayout, QScrollArea, QSizePolicy, QWidget,
-)
+from PyQt6.QtWidgets import QFrame, QLayout, QScrollArea, QSizePolicy, QWidget
 
 
 class ResponsiveScrollArea(QScrollArea):
@@ -16,9 +14,11 @@ class ResponsiveScrollArea(QScrollArea):
         self.setObjectName("ResponsiveScrollArea")
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setWidgetResizable(True)
+        self.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.viewport().setAutoFillBackground(False)
         if widget is not None:
             self.set_content(widget)
 
@@ -30,10 +30,13 @@ class ResponsiveScrollArea(QScrollArea):
         self.setWidget(widget)
 
 
-def scrollable_page(page: QWidget, minimum_width: int = 980) -> ResponsiveScrollArea:
+def scrollable_page(page: QWidget, minimum_width: int = 920) -> ResponsiveScrollArea:
     """Wrap a page so small windows scroll rather than compressing its blocks."""
     page.setMinimumWidth(minimum_width)
-    return ResponsiveScrollArea(page)
+    page.setObjectName(page.objectName() or "WorkspacePage")
+    area = ResponsiveScrollArea(page)
+    area.setProperty("workspaceScroll", True)
+    return area
 
 
 def scrollable_panel(panel: QWidget, minimum_width: int = 0) -> ResponsiveScrollArea:
@@ -41,5 +44,6 @@ def scrollable_panel(panel: QWidget, minimum_width: int = 0) -> ResponsiveScroll
     if minimum_width > 0:
         panel.setMinimumWidth(minimum_width)
     area = ResponsiveScrollArea(panel)
+    area.setProperty("panelScroll", True)
     area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     return area

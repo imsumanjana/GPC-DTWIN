@@ -546,7 +546,11 @@ class ActiveLearningService:
             # Predicted values are not written into measured response fields.
             row[result.response] = ""
             rows.append(row)
-        return pd.DataFrame(rows, columns=DATA_COLUMNS)
+        # Keep the editable experiment plan as object dtype. Pandas 3.x uses a
+        # strict StringDtype for all-blank columns, which otherwise rejects a
+        # later numeric laboratory result assignment. Object dtype preserves
+        # blank cells while allowing users or tests to enter measured numbers.
+        return pd.DataFrame(rows, columns=DATA_COLUMNS, dtype=object)
 
     def compare_update(
         self, result: ActiveLearningRunResult, dataframe: pd.DataFrame

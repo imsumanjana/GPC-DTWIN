@@ -90,5 +90,11 @@ Write-Host "[GPC-DTwin] Running service tests..." -ForegroundColor Cyan
 & $VenvPython -m pytest -m "not gui" --basetemp="$PytestTemp"
 if ($LASTEXITCODE -ne 0) { throw "Service tests failed." }
 
+Write-Host "[GPC-DTwin] Running application check..." -ForegroundColor Cyan
+$env:QT_QPA_PLATFORM = "offscreen"
+& $VenvPython -m gpc_dtwin.app --self-check
+if ($LASTEXITCODE -ne 0) { throw "Application check failed." }
+Remove-Item Env:\QT_QPA_PLATFORM -ErrorAction SilentlyContinue
+
 Write-Host "[GPC-DTwin] Setup completed successfully." -ForegroundColor Green
 Write-Host "Run: powershell -ExecutionPolicy Bypass -File .\scripts\run.ps1"

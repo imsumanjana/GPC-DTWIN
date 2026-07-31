@@ -1,0 +1,11 @@
+GPC-DTwin v1.0.1 hotfix
+
+1. Close GPC-DTwin.
+2. Extract this ZIP into the existing GPC-DTwin repository root.
+3. Allow Windows to replace the listed files.
+4. Run:
+   powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
+5. Start the application with:
+   powershell -ExecutionPolicy Bypass -File .\scripts\run.ps1
+
+This patch corrects pandas 3.x active-learning plan editing and Windows SQLite restore.

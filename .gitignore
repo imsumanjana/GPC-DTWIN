@@ -22,3 +22,7 @@ models/optimizations/*
 !models/optimizations/.gitkeep
 models/active_learning/*
 !models/active_learning/.gitkeep
+
+backups/
+logs/
+ui-check/
