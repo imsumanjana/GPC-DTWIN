@@ -27,7 +27,7 @@ model inputs or numerical outputs.
 All figure exports use the shared `save_square_figure` function:
 
 - 6 × 6 inch canvas;
-- fixed 600 dpi;
+- selectable 150–2400 dpi;
 - 3600 × 3600 raster pixels;
 - no tight-cropping step that would change the square aspect ratio;
 - restoration of the original interactive canvas size and dpi after saving.

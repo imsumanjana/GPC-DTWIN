@@ -12,7 +12,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 
 from gpc_dtwin.columns import COLUMN_LABELS
-from gpc_dtwin.figure_export import save_square_figure
+from gpc_dtwin.ui.export_preview_dialog import open_figure_export_dialog
 from gpc_dtwin.paths import EXPORT_DIR
 from gpc_dtwin.services.statistics_service import StatisticsService
 from gpc_dtwin.ui.models import DataFrameModel
@@ -136,6 +136,7 @@ class StatisticsPage(QWidget):
         controls_layout = QVBoxLayout(controls)
         form = QFormLayout()
         self.reg_response = QComboBox()
+        self.reg_response.currentIndexChanged.connect(self.refresh_regression_predictors)
         self.reg_degree = QComboBox()
         self.reg_degree.addItem("Linear", 1)
         self.reg_degree.addItem("Quadratic numeric terms", 2)
@@ -146,6 +147,12 @@ class StatisticsPage(QWidget):
         self.reg_predictors = QListWidget()
         self.reg_predictors.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         controls_layout.addWidget(self.reg_predictors, 1)
+        self.reg_predictor_note = QLabel(
+            "Unavailable predictors are excluded automatically for the selected response."
+        )
+        self.reg_predictor_note.setObjectName("Muted")
+        self.reg_predictor_note.setWordWrap(True)
+        controls_layout.addWidget(self.reg_predictor_note)
         run = QPushButton("Fit and validate")
         run.setObjectName("PrimaryButton")
         run.clicked.connect(self.run_regression)
@@ -193,8 +200,54 @@ class StatisticsPage(QWidget):
             self.reg_predictors, predictor_options,
             checked_items={"ggbs_percent_numeric", "mechanical_test_age_days", "aas_b_ratio"}
         )
+        self.refresh_regression_predictors()
         self.run_descriptive()
         self.run_correlation()
+
+    def refresh_regression_predictors(self, *_args) -> None:
+        if not hasattr(self, "reg_predictors"):
+            return
+        response = self.reg_response.currentData()
+        if not response:
+            return
+        values = [
+            str(self.reg_predictors.item(index).data(Qt.ItemDataRole.UserRole))
+            for index in range(self.reg_predictors.count())
+        ]
+        available, unavailable = self.service.regression_predictor_availability(
+            self.context.dataframe, str(response), values
+        )
+        available_set = set(available)
+        unavailable_set = set(unavailable)
+        omitted_labels: list[str] = []
+        for index in range(self.reg_predictors.count()):
+            item = self.reg_predictors.item(index)
+            field = str(item.data(Qt.ItemDataRole.UserRole))
+            enabled = field in available_set and field != response
+            flags = item.flags()
+            if enabled:
+                item.setFlags(flags | Qt.ItemFlag.ItemIsEnabled)
+                item.setToolTip("")
+            else:
+                item.setFlags(flags & ~Qt.ItemFlag.ItemIsEnabled)
+                item.setCheckState(Qt.CheckState.Unchecked)
+                if field == response:
+                    item.setToolTip("The response cannot also be a predictor.")
+                else:
+                    item.setToolTip(
+                        "No usable values overlap the selected response in the active dataset."
+                    )
+                    if field in unavailable_set:
+                        omitted_labels.append(COLUMN_LABELS.get(field, field))
+        if omitted_labels:
+            self.reg_predictor_note.setText(
+                f"{len(omitted_labels)} unavailable parameters are excluded automatically "
+                f"for {COLUMN_LABELS.get(str(response), str(response))}."
+            )
+        else:
+            self.reg_predictor_note.setText(
+                "All listed parameters have usable overlap with the selected response."
+            )
 
     @staticmethod
     def _fill_combo(combo: QComboBox, values: list[str], preferred: str) -> None:
@@ -272,11 +325,30 @@ class StatisticsPage(QWidget):
             self.reg_rmse.set_value(f"{result.rmse:.4f}")
             self.reg_mae.set_value(f"{result.mae:.4f}")
             self.reg_r2.set_value(f"{result.r2:.4f}", "success" if result.r2 >= 0.5 else "warning")
-            self.reg_method.setText(f"{result.cv_method} · {result.observations} observations")
+            detail = f"{result.cv_method} · {result.observations} observations"
+            if result.omitted_predictors:
+                labels = [
+                    COLUMN_LABELS.get(field, field)
+                    for field in result.omitted_predictors
+                ]
+                detail += " · excluded: " + ", ".join(labels)
+            self.reg_method.setText(detail)
             self.coefficient_model.set_dataframe(result.coefficients)
             figure = self.service.regression_figure(result)
             self.current_figure = figure
             self.reg_canvas = self._replace_canvas(self.reg_canvas, figure)
+            if result.omitted_predictors:
+                labels = [
+                    COLUMN_LABELS.get(field, field)
+                    for field in result.omitted_predictors
+                ]
+                QMessageBox.warning(
+                    self,
+                    "Parameters excluded",
+                    "Regression completed after automatically excluding parameters "
+                    "without usable values for the selected response:\n\n"
+                    + "\n".join(f"• {label}" for label in labels),
+                )
         except Exception as error:
             QMessageBox.warning(self, "Regression unavailable", str(error))
 
@@ -316,14 +388,8 @@ class StatisticsPage(QWidget):
         if self.current_figure is None:
             QMessageBox.information(self, "Nothing to export", "Run an analysis first.")
             return
-        EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export figure", str(EXPORT_DIR / "statistical_analysis.png"),
-            "PNG image (*.png);;PDF document (*.pdf);;SVG image (*.svg)"
+        open_figure_export_dialog(
+            self, self.current_figure,
+            suggested_name=str(EXPORT_DIR / "statistical_analysis.png"),
         )
-        if path:
-            destination = Path(path)
-            if not destination.suffix:
-                destination = destination.with_suffix(".png")
-            save_square_figure(self.current_figure, destination)
-            self.context.message.emit(f"Figure exported to {destination.name}.")
+

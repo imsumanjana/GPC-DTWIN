@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -18,14 +18,16 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpinBox,
-    QSplitter,
+    QSplitter, QStyle,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from gpc_dtwin.columns import COLUMN_LABELS, MODEL_RESPONSE_COLUMNS
-from gpc_dtwin.figure_export import save_square_figure
+from gpc_dtwin.ui.export_preview_dialog import (
+    QualityNavigationToolbar, open_figure_export_dialog,
+)
 from gpc_dtwin.paths import EXPORT_DIR
 from gpc_dtwin.services.data_service import DataService
 from gpc_dtwin.services.digital_twin_service import DigitalTwinService
@@ -36,7 +38,7 @@ from gpc_dtwin.services.visualization_3d_service import (
     Visualization3DService,
 )
 from gpc_dtwin.ui.scrolling import scrollable_panel
-from gpc_dtwin.ui.widgets import SectionHeader, ValuePill
+from gpc_dtwin.ui.widgets import CompactToolbar, SectionHeader, ValuePill
 
 
 class Visualization3DPage(QWidget):
@@ -183,16 +185,13 @@ class Visualization3DPage(QWidget):
         view_layout.setContentsMargins(0, 0, 0, 0)
         view_layout.setSpacing(10)
 
-        metrics = QFrame()
-        metrics.setObjectName("Card")
-        metrics_layout = QHBoxLayout(metrics)
-        metrics_layout.setContentsMargins(14, 11, 14, 11)
         self.surface_min_pill = ValuePill()
         self.surface_max_pill = ValuePill()
         self.surface_uncertainty_pill = ValuePill()
         self.surface_support_pill = ValuePill()
         self.surface_nodes_pill = ValuePill()
         self.surface_r2_pill = ValuePill()
+        toolbar = CompactToolbar()
         for label, pill in (
             ("Minimum", self.surface_min_pill),
             ("Maximum", self.surface_max_pill),
@@ -201,30 +200,32 @@ class Visualization3DPage(QWidget):
             ("Grid nodes", self.surface_nodes_pill),
             ("CV R²", self.surface_r2_pill),
         ):
-            metrics_layout.addWidget(QLabel(label))
-            metrics_layout.addWidget(pill)
-        metrics_layout.addStretch()
-        view_layout.addWidget(metrics)
+            toolbar.add_metric(label, pill)
+        toolbar.add_stretch()
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_DialogSaveButton,
+            "Export response grid",
+            self.export_surface_grid,
+        )
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_FileDialogDetailedView,
+            "Export 3D surface figure",
+            self.export_surface_figure,
+        )
+        toolbar.finalize()
+        view_layout.addWidget(toolbar)
 
-        toolbar_row = QHBoxLayout()
         self.surface_detail_label = QLabel("No surface is active.")
         self.surface_detail_label.setObjectName("Muted")
         self.surface_detail_label.setWordWrap(True)
-        toolbar_row.addWidget(self.surface_detail_label, 1)
-        export_grid = QPushButton("Export grid")
-        export_grid.clicked.connect(self.export_surface_grid)
-        export_figure = QPushButton("Export figure")
-        export_figure.clicked.connect(self.export_surface_figure)
-        toolbar_row.addWidget(export_grid)
-        toolbar_row.addWidget(export_figure)
-        view_layout.addLayout(toolbar_row)
+        view_layout.addWidget(self.surface_detail_label)
 
         self.surface_card = QFrame()
         self.surface_card.setObjectName("Card")
         self.surface_chart_layout = QVBoxLayout(self.surface_card)
         self.surface_chart_layout.setContentsMargins(10, 10, 10, 10)
         self.surface_canvas = FigureCanvasQTAgg(self.surface_figure)
-        self.surface_toolbar = NavigationToolbar2QT(self.surface_canvas, self.surface_card)
+        self.surface_toolbar = QualityNavigationToolbar(self.surface_canvas, self.surface_card)
         self.surface_chart_layout.addWidget(self.surface_toolbar)
         self.surface_chart_layout.addWidget(self.surface_canvas, 1)
         view_layout.addWidget(self.surface_card, 1)
@@ -335,16 +336,13 @@ class Visualization3DPage(QWidget):
         note_layout.addWidget(note_label)
         view_layout.addWidget(note)
 
-        metrics = QFrame()
-        metrics.setObjectName("Card")
-        metrics_layout = QHBoxLayout(metrics)
-        metrics_layout.setContentsMargins(14, 11, 14, 11)
         self.specimen_base_pill = ValuePill()
         self.specimen_mean_pill = ValuePill()
         self.specimen_range_pill = ValuePill()
         self.specimen_cv_pill = ValuePill()
         self.specimen_uniformity_pill = ValuePill()
         self.specimen_records_pill = ValuePill()
+        toolbar = CompactToolbar()
         for label, pill in (
             ("Aggregate value", self.specimen_base_pill),
             ("Field mean", self.specimen_mean_pill),
@@ -353,30 +351,32 @@ class Visualization3DPage(QWidget):
             ("Uniformity", self.specimen_uniformity_pill),
             ("Source records", self.specimen_records_pill),
         ):
-            metrics_layout.addWidget(QLabel(label))
-            metrics_layout.addWidget(pill)
-        metrics_layout.addStretch()
-        view_layout.addWidget(metrics)
+            toolbar.add_metric(label, pill)
+        toolbar.add_stretch()
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_DialogSaveButton,
+            "Export specimen field data",
+            self.export_specimen_field,
+        )
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_FileDialogDetailedView,
+            "Export specimen-field figure",
+            self.export_specimen_figure,
+        )
+        toolbar.finalize()
+        view_layout.addWidget(toolbar)
 
-        toolbar_row = QHBoxLayout()
         self.specimen_detail_label = QLabel("No specimen field is active.")
         self.specimen_detail_label.setObjectName("Muted")
         self.specimen_detail_label.setWordWrap(True)
-        toolbar_row.addWidget(self.specimen_detail_label, 1)
-        export_data = QPushButton("Export field")
-        export_data.clicked.connect(self.export_specimen_field)
-        export_figure = QPushButton("Export figure")
-        export_figure.clicked.connect(self.export_specimen_figure)
-        toolbar_row.addWidget(export_data)
-        toolbar_row.addWidget(export_figure)
-        view_layout.addLayout(toolbar_row)
+        view_layout.addWidget(self.specimen_detail_label)
 
         self.specimen_card = QFrame()
         self.specimen_card.setObjectName("Card")
         self.specimen_chart_layout = QVBoxLayout(self.specimen_card)
         self.specimen_chart_layout.setContentsMargins(10, 10, 10, 10)
         self.specimen_canvas = FigureCanvasQTAgg(self.specimen_figure)
-        self.specimen_toolbar = NavigationToolbar2QT(self.specimen_canvas, self.specimen_card)
+        self.specimen_toolbar = QualityNavigationToolbar(self.specimen_canvas, self.specimen_card)
         self.specimen_chart_layout.addWidget(self.specimen_toolbar)
         self.specimen_chart_layout.addWidget(self.specimen_canvas, 1)
         view_layout.addWidget(self.specimen_card, 1)
@@ -474,6 +474,17 @@ class Visualization3DPage(QWidget):
             self._show_surface_metrics()
             self.render_surface()
             self.context.message.emit("3D response surface created.")
+            omitted = self.surface_result.twin_result.omitted_predictors
+            if omitted:
+                QMessageBox.warning(
+                    self,
+                    "Parameters excluded",
+                    "The 3D response surface was created after automatically excluding "
+                    "parameters without usable values for the selected response:\n\n"
+                    + "\n".join(
+                        f"• {COLUMN_LABELS.get(field, field)}" for field in omitted
+                    ),
+                )
         except Exception as error:
             QMessageBox.critical(self, "Surface generation failed", str(error))
         finally:
@@ -598,10 +609,10 @@ class Visualization3DPage(QWidget):
     def _replace_canvas(
         layout: QVBoxLayout,
         old_canvas: FigureCanvasQTAgg,
-        old_toolbar: NavigationToolbar2QT,
+        old_toolbar: QualityNavigationToolbar,
         figure: Figure,
         parent: QWidget,
-    ) -> tuple[FigureCanvasQTAgg, NavigationToolbar2QT]:
+    ) -> tuple[FigureCanvasQTAgg, QualityNavigationToolbar]:
         layout.removeWidget(old_toolbar)
         old_toolbar.setParent(None)
         old_toolbar.deleteLater()
@@ -609,7 +620,7 @@ class Visualization3DPage(QWidget):
         old_canvas.setParent(None)
         old_canvas.deleteLater()
         canvas = FigureCanvasQTAgg(figure)
-        toolbar = NavigationToolbar2QT(canvas, parent)
+        toolbar = QualityNavigationToolbar(canvas, parent)
         layout.addWidget(toolbar)
         layout.addWidget(canvas, 1)
         canvas.draw_idle()
@@ -650,20 +661,7 @@ class Visualization3DPage(QWidget):
         self._export_figure(self.specimen_figure, "GPC_DTwin_Specimen_Field.png")
 
     def _export_figure(self, figure: Figure, filename: str) -> None:
-        EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export 3D figure",
-            str(EXPORT_DIR / filename),
-            "PNG image (*.png);;PDF document (*.pdf);;SVG image (*.svg);;TIFF image (*.tiff *.tif)",
+        open_figure_export_dialog(
+            self, figure, suggested_name=str(EXPORT_DIR / filename)
         )
-        if not path:
-            return
-        destination = Path(path)
-        if not destination.suffix:
-            destination = destination.with_suffix(".png")
-        try:
-            save_square_figure(figure, destination)
-            self.context.message.emit(f"3D figure exported to {destination.name}.")
-        except Exception as error:
-            QMessageBox.critical(self, "Figure export failed", str(error))
+

@@ -379,17 +379,38 @@ class ActiveLearningService:
         candidate_count = int(np.clip(candidate_count, 50, 20000))
         recommendation_count = int(np.clip(recommendation_count, 1, min(100, candidate_count)))
 
+        requested_predictors = list(predictors)
         twin: TwinBuildResult = DigitalTwinService().build_twin(
             dataframe=dataframe,
             response=response,
-            predictors=predictors,
+            predictors=requested_predictors,
             method=method,
             confidence_percent=confidence_percent,
             include_review_records=include_review_records,
             group_column="mix_id",
         )
+        predictors = list(twin.predictors)
+        omitted_variables = [
+            item.field for item in variable_items if item.field not in predictors
+        ]
+        variable_items = tuple(
+            item for item in variable_items if item.field in predictors
+        )
+        if not variable_items:
+            raise ValueError(
+                "None of the selected experiment variables has usable values for the selected response."
+            )
+        effective_binder_closure = bool(
+            binder_closure
+            and all(
+                field in {item.field for item in variable_items}
+                for field in self.COMPOSITION_FIELDS
+            )
+        )
         population = self._sample_population(variable_items, candidate_count, seed)
-        population = self._repair_closure(population, variable_items, binder_closure)
+        population = self._repair_closure(
+            population, variable_items, effective_binder_closure
+        )
         candidate_frame = self._candidate_frame(population, variable_items, twin.artifact)
         predictions = DigitalTwinService.predict_dataframe(twin.artifact, candidate_frame)
         novelty = self._existing_distance(dataframe, population, variable_items)
@@ -461,6 +482,9 @@ class ActiveLearningService:
             "normalized_rmse_percent": twin.metrics["normalized_rmse_percent"],
             "calibration_gap_percent": twin.metrics["calibration_gap_percent"],
             "mean_interval_width": twin.metrics["mean_interval_width"],
+            "used_predictors": ", ".join(twin.predictors),
+            "omitted_predictors": ", ".join(twin.omitted_predictors),
+            "omitted_variables": ", ".join(omitted_variables),
         }])
         created = datetime.now(timezone.utc).isoformat()
         metadata = {
@@ -470,7 +494,11 @@ class ActiveLearningService:
             "created_at_utc": created,
             "response": response,
             "response_label": COLUMN_LABELS.get(response, response),
+            "requested_predictors": requested_predictors,
             "predictors": predictors,
+            "omitted_predictors": list(twin.omitted_predictors),
+            "omitted_predictor_reasons": dict(twin.omitted_reasons),
+            "omitted_variables": omitted_variables,
             "variables": [item.__dict__ for item in variable_items],
             "method": method,
             "strategy": strategy,
@@ -479,7 +507,7 @@ class ActiveLearningService:
             "candidate_count": int(candidate_count),
             "eligible_candidates": int(len(table)),
             "recommendation_count": int(len(recommendations)),
-            "binder_closure": bool(binder_closure),
+            "binder_closure": effective_binder_closure,
             "diversity_weight": diversity_weight,
             "exploration_parameter": float(exploration_parameter),
             "confidence_bound_weight": float(confidence_bound_weight),
@@ -498,7 +526,7 @@ class ActiveLearningService:
             confidence_percent=float(confidence_percent),
             candidate_count=candidate_count,
             recommendation_count=len(recommendations),
-            binder_closure=bool(binder_closure),
+            binder_closure=effective_binder_closure,
             diversity_weight=diversity_weight,
             exploration_parameter=float(exploration_parameter),
             confidence_bound_weight=float(confidence_bound_weight),

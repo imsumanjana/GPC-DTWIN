@@ -9,7 +9,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame,
     QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
-    QSplitter, QTableView, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout,
+    QSplitter, QStyle, QTableView, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout,
     QWidget,
 )
 
@@ -17,13 +17,13 @@ from gpc_dtwin.columns import (
     COLUMN_LABELS, MODEL_DEFAULT_PREDICTORS, MODEL_PREDICTOR_COLUMNS,
     MODEL_RESPONSE_COLUMNS,
 )
-from gpc_dtwin.figure_export import save_square_figure
+from gpc_dtwin.ui.export_preview_dialog import open_figure_export_dialog
 from gpc_dtwin.paths import EXPORT_DIR, MODEL_DIR
 from gpc_dtwin.services.modeling_service import ModelComparisonResult, ModelingService
 from gpc_dtwin.ui.models import DataFrameModel
 from gpc_dtwin.ui.figure_tabs import FigureTabs
 from gpc_dtwin.ui.scrolling import scrollable_panel
-from gpc_dtwin.ui.widgets import SectionHeader, ValuePill
+from gpc_dtwin.ui.widgets import CompactToolbar, SectionHeader, ValuePill
 
 
 class ModelingPage(QWidget):
@@ -101,12 +101,12 @@ class ModelingPage(QWidget):
         results = QWidget()
         results_layout = QVBoxLayout(results)
         results_layout.setContentsMargins(0, 0, 0, 0)
-        metrics = QHBoxLayout()
         self.best_model_pill = ValuePill()
         self.rmse_pill = ValuePill()
         self.mae_pill = ValuePill()
         self.r2_pill = ValuePill()
         self.observations_pill = ValuePill()
+        toolbar = CompactToolbar()
         for label, pill in (
             ("Best model", self.best_model_pill),
             ("RMSE", self.rmse_pill),
@@ -114,29 +114,30 @@ class ModelingPage(QWidget):
             ("R²", self.r2_pill),
             ("Records", self.observations_pill),
         ):
-            metrics.addWidget(QLabel(label))
-            metrics.addWidget(pill)
-        metrics.addStretch()
-        results_layout.addLayout(metrics)
+            toolbar.add_metric(label, pill)
+        toolbar.add_stretch()
+        toolbar.add_label("Diagnostics")
+        self.diagnostic_algorithm = QComboBox()
+        self.diagnostic_algorithm.setMinimumWidth(150)
+        self.diagnostic_algorithm.currentTextChanged.connect(self.update_diagnostics)
+        toolbar.add_widget(self.diagnostic_algorithm)
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_DialogSaveButton,
+            "Export model-comparison results",
+            self.export_comparison,
+        )
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_FileDialogDetailedView,
+            "Export active figure",
+            self.export_active_figure,
+        )
+        toolbar.finalize()
+        results_layout.addWidget(toolbar)
 
         self.cv_label = QLabel("Select a response and predictors, then compare models.")
         self.cv_label.setObjectName("Muted")
         self.cv_label.setWordWrap(True)
         results_layout.addWidget(self.cv_label)
-
-        toolbar = QHBoxLayout()
-        self.diagnostic_algorithm = QComboBox()
-        self.diagnostic_algorithm.currentTextChanged.connect(self.update_diagnostics)
-        toolbar.addWidget(QLabel("Diagnostics"))
-        toolbar.addWidget(self.diagnostic_algorithm)
-        toolbar.addStretch()
-        export_table = QPushButton("Export results")
-        export_table.clicked.connect(self.export_comparison)
-        export_figure = QPushButton("Export figure")
-        export_figure.clicked.connect(self.export_active_figure)
-        toolbar.addWidget(export_table)
-        toolbar.addWidget(export_figure)
-        results_layout.addLayout(toolbar)
 
         self.result_tabs = QTabWidget()
         self.result_tabs.currentChanged.connect(self._active_result_tab_changed)
@@ -412,6 +413,18 @@ class ModelingPage(QWidget):
                     f"{'s were' if count != 1 else ' was'} omitted."
                 )
             self.context.message.emit(completion)
+            if result.omitted_predictors:
+                labels = [
+                    COLUMN_LABELS.get(field, field)
+                    for field in result.omitted_predictors
+                ]
+                QMessageBox.warning(
+                    self,
+                    "Parameters excluded",
+                    "Model comparison completed after automatically excluding parameters "
+                    "without usable values for the selected response:\n\n"
+                    + "\n".join(f"• {label}" for label in labels),
+                )
         except Exception as error:
             QMessageBox.warning(self, "Model comparison unavailable", str(error))
         finally:
@@ -636,14 +649,7 @@ class ModelingPage(QWidget):
         if figure is None:
             QMessageBox.information(self, "Nothing to export", "Run a model comparison first.")
             return
-        EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export figure", str(EXPORT_DIR / f"model_{key}.png"),
-            "PNG image (*.png);;PDF document (*.pdf);;SVG image (*.svg);;TIFF image (*.tiff)"
+        open_figure_export_dialog(
+            self, figure, suggested_name=str(EXPORT_DIR / f"model_{key}.png")
         )
-        if path:
-            destination = Path(path)
-            if not destination.suffix:
-                destination = destination.with_suffix(".png")
-            save_square_figure(figure, destination)
-            self.context.message.emit(f"Figure exported to {destination.name}.")
+

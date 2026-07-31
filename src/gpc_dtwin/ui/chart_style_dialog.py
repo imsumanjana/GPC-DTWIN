@@ -334,7 +334,7 @@ class ChartStyleDialog(QDialog):
     def _export_tab(self) -> QScrollArea:
         form = QFormLayout()
         note = QLabel(
-            "Exports use a fixed square 6 × 6 inch canvas at 600 dpi. PNG and TIFF output is 3600 × 3600 pixels."
+            "Exports use a square 6 × 6 inch canvas. Choose 150, 300, 600, 1200, or 2400 dpi in the export popup."
         )
         note.setObjectName("Muted")
         note.setWordWrap(True)

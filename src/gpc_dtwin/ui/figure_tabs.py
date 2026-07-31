@@ -7,15 +7,18 @@ from copy import deepcopy
 from pathlib import Path
 import re
 
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QDialog, QFileDialog, QFrame, QHBoxLayout, QInputDialog, QMessageBox,
+    QDialog, QFileDialog, QFrame, QHBoxLayout, QMessageBox,
     QSizePolicy, QTabWidget, QToolButton, QVBoxLayout, QWidget, QScrollArea,
 )
 
 from gpc_dtwin.figure_export import save_square_figure
+from gpc_dtwin.ui.export_preview_dialog import (
+    BatchExportOptionsDialog, QualityNavigationToolbar, open_figure_export_dialog,
+)
 
 
 def _safe_name(value: str) -> str:
@@ -35,7 +38,7 @@ class ExpandedFigureDialog(QDialog):
             expanded = figure
         canvas = FigureCanvasQTAgg(expanded)
         canvas.setMinimumSize(820, 820)
-        toolbar = NavigationToolbar2QT(canvas, self)
+        toolbar = QualityNavigationToolbar(canvas, self)
         layout.addWidget(toolbar)
         layout.addWidget(canvas, 1)
         canvas.draw_idle()
@@ -176,16 +179,7 @@ class FigureTabs(QWidget):
         if figure is None:
             return
         default = f"{_safe_name(self.current_name() or 'figure')}.png"
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export current figure", default,
-            "Figure files (*.png *.pdf *.svg *.tif *.tiff)",
-        )
-        if not path:
-            return
-        try:
-            save_square_figure(figure, path)
-        except Exception as exc:
-            QMessageBox.critical(self, "Export failed", str(exc))
+        open_figure_export_dialog(self, figure, suggested_name=default)
 
     def export_all(self) -> None:
         if not self._canvases:
@@ -193,16 +187,20 @@ class FigureTabs(QWidget):
         directory = QFileDialog.getExistingDirectory(self, "Choose export folder")
         if not directory:
             return
-        format_name, accepted = QInputDialog.getItem(
-            self, "Export all figures", "Format", ["PNG", "PDF", "SVG", "TIFF"], 0, False
-        )
-        if not accepted:
+        options = BatchExportOptionsDialog(self)
+        if options.exec() != QDialog.DialogCode.Accepted:
             return
-        suffix = {"PNG": ".png", "PDF": ".pdf", "SVG": ".svg", "TIFF": ".tiff"}[format_name]
+        suffix = {"PNG": ".png", "PDF": ".pdf", "SVG": ".svg", "TIFF": ".tiff"}[
+            options.selected_format
+        ]
         exported = 0
         try:
             for name, figure in self.figures().items():
-                save_square_figure(figure, Path(directory) / f"{_safe_name(name)}{suffix}")
+                save_square_figure(
+                    figure,
+                    Path(directory) / f"{_safe_name(name)}{suffix}",
+                    dpi=options.selected_dpi,
+                )
                 exported += 1
         except Exception as exc:
             QMessageBox.critical(self, "Export failed", str(exc))

@@ -8,13 +8,13 @@ from PyQt6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog,
     QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget,
     QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QSpinBox,
-    QSplitter, QTabWidget, QTableView, QVBoxLayout, QWidget,
+    QSplitter, QStyle, QTabWidget, QTableView, QVBoxLayout, QWidget,
 )
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 
 from gpc_dtwin.columns import COLUMN_LABELS
-from gpc_dtwin.figure_export import save_square_figure
+from gpc_dtwin.ui.export_preview_dialog import open_figure_export_dialog
 from gpc_dtwin.paths import DURABILITY_DIR, EXPORT_DIR, NDT_DIR
 from gpc_dtwin.services.digital_twin_service import DigitalTwinService
 from gpc_dtwin.services.ndt_durability_service import (
@@ -22,7 +22,7 @@ from gpc_dtwin.services.ndt_durability_service import (
 )
 from gpc_dtwin.ui.models import DataFrameModel
 from gpc_dtwin.ui.scrolling import scrollable_panel
-from gpc_dtwin.ui.widgets import SectionHeader, ValuePill
+from gpc_dtwin.ui.widgets import CompactToolbar, SectionHeader, ValuePill
 
 
 class NDTDurabilityPage(QWidget):
@@ -115,14 +115,12 @@ class NDTDurabilityPage(QWidget):
         results_layout.setContentsMargins(0, 0, 0, 0)
         results_layout.setSpacing(10)
 
-        metrics = QFrame()
-        metrics.setObjectName("Card")
-        metric_layout = QHBoxLayout(metrics)
         self.ndt_best_pill = ValuePill()
         self.ndt_records_pill = ValuePill()
         self.ndt_rmse_pill = ValuePill()
         self.ndt_mae_pill = ValuePill()
         self.ndt_r2_pill = ValuePill()
+        toolbar = CompactToolbar()
         for label, pill in (
             ("Best input set", self.ndt_best_pill),
             ("Matched mixes", self.ndt_records_pill),
@@ -130,33 +128,31 @@ class NDTDurabilityPage(QWidget):
             ("MAE", self.ndt_mae_pill),
             ("R²", self.ndt_r2_pill),
         ):
-            metric_layout.addWidget(QLabel(label))
-            metric_layout.addWidget(pill)
-        metric_layout.addStretch()
-        results_layout.addWidget(metrics)
-
-        toolbar = QHBoxLayout()
-        toolbar.addWidget(QLabel("View"))
+            toolbar.add_metric(label, pill)
+        toolbar.add_stretch()
+        toolbar.add_label("View")
         self.ndt_view_combo = QComboBox()
         self.ndt_view_combo.addItems([
             "Observed vs estimated", "Residuals", "Input-set RMSE"
         ])
         self.ndt_view_combo.currentTextChanged.connect(self.render_ndt_figure)
-        toolbar.addWidget(self.ndt_view_combo)
-        toolbar.addWidget(QLabel("Input set"))
+        toolbar.add_widget(self.ndt_view_combo)
+        toolbar.add_label("Input set")
         self.ndt_feature_combo = QComboBox()
         self.ndt_feature_combo.currentTextChanged.connect(self.render_ndt_figure)
-        toolbar.addWidget(self.ndt_feature_combo)
-        toolbar.addStretch()
-        export_table = QPushButton("Export results")
-        export_table.clicked.connect(self.export_ndt_results)
-        export_figure = QPushButton("Export figure")
-        export_figure.clicked.connect(lambda: self.export_figure(
-            self.ndt_figure, "ndt_fusion.png"
-        ))
-        toolbar.addWidget(export_table)
-        toolbar.addWidget(export_figure)
-        results_layout.addLayout(toolbar)
+        toolbar.add_widget(self.ndt_feature_combo)
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_DialogSaveButton,
+            "Export NDT results",
+            self.export_ndt_results,
+        )
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_FileDialogDetailedView,
+            "Export NDT figure",
+            lambda: self.export_figure(self.ndt_figure, "ndt_fusion.png"),
+        )
+        toolbar.finalize()
+        results_layout.addWidget(toolbar)
 
         chart_card = QFrame()
         chart_card.setObjectName("Card")
@@ -340,14 +336,12 @@ class NDTDurabilityPage(QWidget):
         results_layout = QVBoxLayout(results)
         results_layout.setContentsMargins(0, 0, 0, 0)
         results_layout.setSpacing(10)
-        metrics = QFrame()
-        metrics.setObjectName("Card")
-        metric_layout = QHBoxLayout(metrics)
         self.profile_records_pill = ValuePill()
         self.profile_best_pill = ValuePill()
         self.profile_score_pill = ValuePill()
         self.profile_retention_pill = ValuePill()
         self.profile_loss_pill = ValuePill()
+        toolbar = CompactToolbar()
         for label, pill in (
             ("Exposure records", self.profile_records_pill),
             ("Top mix", self.profile_best_pill),
@@ -355,30 +349,28 @@ class NDTDurabilityPage(QWidget):
             ("Mean retention", self.profile_retention_pill),
             ("Maximum loss", self.profile_loss_pill),
         ):
-            metric_layout.addWidget(QLabel(label))
-            metric_layout.addWidget(pill)
-        metric_layout.addStretch()
-        results_layout.addWidget(metrics)
-
-        toolbar = QHBoxLayout()
-        toolbar.addWidget(QLabel("View"))
+            toolbar.add_metric(label, pill)
+        toolbar.add_stretch()
+        toolbar.add_label("View")
         self.profile_view_combo = QComboBox()
         self.profile_view_combo.addItems([
             "Durability score", "Initial vs residual strength",
             "Strength-retention heatmap", "Mass-change heatmap",
         ])
         self.profile_view_combo.currentTextChanged.connect(self.render_profile_figure)
-        toolbar.addWidget(self.profile_view_combo)
-        toolbar.addStretch()
-        export_table = QPushButton("Export ranking")
-        export_table.clicked.connect(self.export_profile_ranking)
-        export_figure = QPushButton("Export figure")
-        export_figure.clicked.connect(lambda: self.export_figure(
-            self.profile_figure, "durability_profile.png"
-        ))
-        toolbar.addWidget(export_table)
-        toolbar.addWidget(export_figure)
-        results_layout.addLayout(toolbar)
+        toolbar.add_widget(self.profile_view_combo)
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_DialogSaveButton,
+            "Export durability ranking",
+            self.export_profile_ranking,
+        )
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_FileDialogDetailedView,
+            "Export durability-profile figure",
+            lambda: self.export_figure(self.profile_figure, "durability_profile.png"),
+        )
+        toolbar.finalize()
+        results_layout.addWidget(toolbar)
 
         chart_card = QFrame()
         chart_card.setObjectName("Card")
@@ -477,14 +469,12 @@ class NDTDurabilityPage(QWidget):
         results_layout.setContentsMargins(0, 0, 0, 0)
         results_layout.setSpacing(10)
 
-        metrics = QFrame()
-        metrics.setObjectName("Card")
-        metric_layout = QHBoxLayout(metrics)
         self.dur_records_pill = ValuePill()
         self.dur_rmse_pill = ValuePill()
         self.dur_r2_pill = ValuePill()
         self.dur_coverage_pill = ValuePill()
         self.dur_method_pill = ValuePill()
+        metrics_toolbar = CompactToolbar()
         for label, pill in (
             ("Records", self.dur_records_pill),
             ("RMSE", self.dur_rmse_pill),
@@ -492,10 +482,10 @@ class NDTDurabilityPage(QWidget):
             ("Coverage", self.dur_coverage_pill),
             ("Method", self.dur_method_pill),
         ):
-            metric_layout.addWidget(QLabel(label))
-            metric_layout.addWidget(pill)
-        metric_layout.addStretch()
-        results_layout.addWidget(metrics)
+            metrics_toolbar.add_metric(label, pill)
+        metrics_toolbar.add_stretch()
+        metrics_toolbar.finalize()
+        results_layout.addWidget(metrics_toolbar)
 
         scenario = QFrame()
         scenario.setObjectName("Card")
@@ -546,27 +536,33 @@ class NDTDurabilityPage(QWidget):
         scenario_layout.addWidget(self.dur_estimate_note)
         results_layout.addWidget(scenario)
 
-        sweep_toolbar = QHBoxLayout()
-        sweep_toolbar.addWidget(QLabel("Sweep field"))
+        sweep_toolbar = CompactToolbar()
+        sweep_toolbar.add_label("Sweep field")
         self.dur_sweep_combo = QComboBox()
-        sweep_toolbar.addWidget(self.dur_sweep_combo)
+        sweep_toolbar.add_widget(self.dur_sweep_combo)
         self.dur_sweep_resolution = QSpinBox()
         self.dur_sweep_resolution.setRange(15, 250)
         self.dur_sweep_resolution.setValue(60)
-        sweep_toolbar.addWidget(self.dur_sweep_resolution)
-        sweep_button = QPushButton("Generate curve")
-        sweep_button.clicked.connect(self.generate_durability_sweep)
-        sweep_toolbar.addWidget(sweep_button)
-        sweep_toolbar.addStretch()
-        export_data = QPushButton("Export curve")
-        export_data.clicked.connect(self.export_sweep_data)
-        export_figure = QPushButton("Export figure")
-        export_figure.clicked.connect(lambda: self.export_figure(
-            self.sweep_figure, "durability_estimator.png"
-        ))
-        sweep_toolbar.addWidget(export_data)
-        sweep_toolbar.addWidget(export_figure)
-        results_layout.addLayout(sweep_toolbar)
+        sweep_toolbar.add_widget(self.dur_sweep_resolution)
+        sweep_toolbar.add_stretch()
+        sweep_toolbar.add_action(
+            QStyle.StandardPixmap.SP_MediaPlay,
+            "Generate response curve",
+            self.generate_durability_sweep,
+            accent=True,
+        )
+        sweep_toolbar.add_action(
+            QStyle.StandardPixmap.SP_DialogSaveButton,
+            "Export response-curve data",
+            self.export_sweep_data,
+        )
+        sweep_toolbar.add_action(
+            QStyle.StandardPixmap.SP_FileDialogDetailedView,
+            "Export response-curve figure",
+            lambda: self.export_figure(self.sweep_figure, "durability_estimator.png"),
+        )
+        sweep_toolbar.finalize()
+        results_layout.addWidget(sweep_toolbar)
 
         chart_card = QFrame()
         chart_card.setObjectName("Card")
@@ -662,17 +658,9 @@ class NDTDurabilityPage(QWidget):
         if figure is None:
             QMessageBox.information(self, "Nothing to export", "Generate a figure first.")
             return
-        EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export figure", str(EXPORT_DIR / default_name),
-            "PNG image (*.png);;PDF document (*.pdf);;SVG image (*.svg);;TIFF image (*.tiff)"
+        open_figure_export_dialog(
+            self, figure, suggested_name=str(EXPORT_DIR / default_name)
         )
-        if path:
-            destination = Path(path)
-            if not destination.suffix:
-                destination = destination.with_suffix(".png")
-            save_square_figure(figure, destination)
-            self.context.message.emit(f"Figure exported to {destination.name}.")
 
     # ------------------------------------------------------------------
     # NDT actions
@@ -938,6 +926,17 @@ class NDTDurabilityPage(QWidget):
         self._refresh_sweep_fields()
         self.refresh_durability_library()
         self.context.message.emit("Durability estimator built.")
+        if result.omitted_predictors:
+            QMessageBox.warning(
+                self,
+                "Parameters excluded",
+                "The durability estimator was built after automatically excluding "
+                "parameters without usable values for the selected response:\n\n"
+                + "\n".join(
+                    f"• {COLUMN_LABELS.get(field, field)}"
+                    for field in result.omitted_predictors
+                ),
+            )
 
     def _refresh_sweep_fields(self) -> None:
         self.dur_sweep_combo.clear()

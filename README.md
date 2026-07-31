@@ -1,4 +1,4 @@
-# GPC-DTwin v1.1.3
+# GPC-DTwin v1.1.5
 
 GPC-DTwin is a release-ready desktop platform for structured geopolymer-concrete data management,
 quality checking, visual analytics, statistical analysis, predictive modelling, uncertainty-aware
@@ -20,9 +20,29 @@ multi-objective optimization, inverse material design, active learning, and repr
 
 The Data Explorer tabs share the same active dataset and refresh automatically after import, editing, verification, or replacement.
 
+## Compact result toolbars
+
+Major analytical result areas now use one horizontally scrollable row containing metrics, selectors,
+and icon-only actions. Export, save, and related commands retain descriptive tooltips and accessible
+names without consuming a second or third row. If the window is narrow, the toolbar scrolls instead
+of wrapping or compressing controls.
+
+Full-width tab separator lines have been removed application-wide. Only the short selected-tab accent
+remains, preserving orientation without drawing a line across the workspace.
+
+## Universal parameter compatibility
+
+Every response-driven workflow evaluates selected parameters against rows where the chosen response is available. Parameters with no usable overlapping values are excluded automatically, the analysis continues with valid inputs, and a warning lists every excluded field. This policy applies to statistical regression, predictive models, digital twins, 3D response surfaces, durability estimators, optimization surrogates, and active-learning surrogates. Requested, used, and omitted fields are retained in result metadata where applicable.
+
+Regression also deduplicates grouping fields before grouped cross-validation, preventing duplicate two-dimensional group arrays and the former `object too deep for desired array` failure.
+
+## Selectable figure quality
+
+Every manual figure export opens a square-export preview and quality selector. Available resolutions are 150, 300, 600, 1200, and 2400 dpi. The 6 × 6 inch canvas therefore produces raster images from 900 × 900 through 14400 × 14400 pixels. Batch figure-tab export asks for the common format and quality once before saving all tabs. Automated report figures retain the documented default of 600 dpi.
+
 ## Publication graphics system
 
-Version 1.1.3 provides an application-wide, icon-driven chart presentation system:
+Version 1.1.5 provides an application-wide, icon-driven chart presentation system:
 
 - one compact palette icon on every Matplotlib chart;
 - Times New Roman as the default chart typeface;
@@ -43,7 +63,7 @@ See `docs/CHART_APPEARANCE.md` and `docs/PUBLICATION_GRAPHICS.md`.
 - Figure groups provide compact expand, export-current, and export-all controls.
 - Figure hosts scroll when their natural minimum size exceeds the available area.
 - Digital Twin response maps use a fixed square 720 × 720 pixel display host with horizontal and vertical scrolling as required.
-- Every export remains square at 6 × 6 inches and exactly 600 dpi.
+- Every user-triggered figure export opens a quality popup with 150, 300, 600, 1200, and 2400 dpi options while retaining a square 6 × 6 inch canvas.
 - PNG and TIFF output is 3600 × 3600 pixels.
 - PNG, PDF, SVG, TIFF, and TIF are supported where offered.
 

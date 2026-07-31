@@ -10,7 +10,7 @@ from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog,
     QFormLayout, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
-    QMessageBox, QPushButton, QScrollArea, QSpinBox, QSplitter, QTableView,
+    QMessageBox, QPushButton, QScrollArea, QSpinBox, QSplitter, QStyle, QTableView,
     QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
 )
 
@@ -18,7 +18,7 @@ from gpc_dtwin.columns import (
     COLUMN_LABELS, MODEL_DEFAULT_PREDICTORS, MODEL_NUMERIC_PREDICTORS,
     MODEL_PREDICTOR_COLUMNS, MODEL_RESPONSE_COLUMNS,
 )
-from gpc_dtwin.figure_export import save_square_figure
+from gpc_dtwin.ui.export_preview_dialog import open_figure_export_dialog
 from gpc_dtwin.paths import ACTIVE_LEARNING_DIR, EXPORT_DIR
 from gpc_dtwin.services.active_learning_service import (
     ActiveLearningRunResult, ActiveLearningService, LearningVariable,
@@ -26,7 +26,7 @@ from gpc_dtwin.services.active_learning_service import (
 )
 from gpc_dtwin.ui.models import DataFrameModel
 from gpc_dtwin.ui.figure_tabs import FigureTabs
-from gpc_dtwin.ui.widgets import SectionHeader, ValuePill
+from gpc_dtwin.ui.widgets import CompactToolbar, SectionHeader, ValuePill
 
 
 class ActiveLearningPage(QWidget):
@@ -180,12 +180,12 @@ class ActiveLearningPage(QWidget):
         results_layout = QVBoxLayout(results)
         results_layout.setContentsMargins(0, 0, 0, 0)
         results_layout.setSpacing(10)
-        metrics = QHBoxLayout()
         self.recommendation_pill = ValuePill()
         self.pool_pill = ValuePill()
         self.acquisition_pill = ValuePill()
         self.uncertainty_pill = ValuePill()
         self.reliability_pill = ValuePill()
+        toolbar = CompactToolbar()
         for label, pill in (
             ("Recommendations", self.recommendation_pill),
             ("Eligible candidates", self.pool_pill),
@@ -193,10 +193,38 @@ class ActiveLearningPage(QWidget):
             ("Median uncertainty", self.uncertainty_pill),
             ("Best reliability", self.reliability_pill),
         ):
-            metrics.addWidget(QLabel(label))
-            metrics.addWidget(pill)
-        metrics.addStretch()
-        results_layout.addLayout(metrics)
+            toolbar.add_metric(label, pill)
+        toolbar.add_stretch()
+        self.x_axis_combo = QComboBox()
+        self.y_axis_combo = QComboBox()
+        self.x_axis_combo.currentIndexChanged.connect(self.refresh_acquisition_figure)
+        self.y_axis_combo.currentIndexChanged.connect(self.refresh_acquisition_figure)
+        toolbar.add_label("Map X")
+        toolbar.add_widget(self.x_axis_combo)
+        toolbar.add_label("Map Y")
+        toolbar.add_widget(self.y_axis_combo)
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_DialogSaveButton,
+            "Export experiment recommendations",
+            self.export_recommendations,
+        )
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_FileDialogListView,
+            "Export compatible experiment plan",
+            self.export_experiment_plan,
+        )
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_FileDialogDetailedView,
+            "Export active-learning figure",
+            self.export_active_figure,
+        )
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_DriveHDIcon,
+            "Save active-learning run",
+            self.save_run,
+        )
+        toolbar.finalize()
+        results_layout.addWidget(toolbar)
 
         self.detail_label = QLabel(
             "Select a response, inputs, variable bounds, and an acquisition strategy."
@@ -204,30 +232,6 @@ class ActiveLearningPage(QWidget):
         self.detail_label.setObjectName("Muted")
         self.detail_label.setWordWrap(True)
         results_layout.addWidget(self.detail_label)
-
-        actions = QHBoxLayout()
-        self.x_axis_combo = QComboBox()
-        self.y_axis_combo = QComboBox()
-        self.x_axis_combo.currentIndexChanged.connect(self.refresh_acquisition_figure)
-        self.y_axis_combo.currentIndexChanged.connect(self.refresh_acquisition_figure)
-        actions.addWidget(QLabel("Map X"))
-        actions.addWidget(self.x_axis_combo)
-        actions.addWidget(QLabel("Map Y"))
-        actions.addWidget(self.y_axis_combo)
-        actions.addStretch()
-        export_results = QPushButton("Export recommendations")
-        export_results.clicked.connect(self.export_recommendations)
-        export_plan = QPushButton("Export experiment plan")
-        export_plan.clicked.connect(self.export_experiment_plan)
-        export_figure = QPushButton("Export figure")
-        export_figure.clicked.connect(self.export_active_figure)
-        save_run = QPushButton("Save run")
-        save_run.clicked.connect(self.save_run)
-        actions.addWidget(export_results)
-        actions.addWidget(export_plan)
-        actions.addWidget(export_figure)
-        actions.addWidget(save_run)
-        results_layout.addLayout(actions)
 
         self.result_tabs = QTabWidget()
         recommendations_widget = QWidget()
@@ -491,6 +495,29 @@ class ActiveLearningPage(QWidget):
         self.context.message.emit(
             f"Generated {len(run.recommendations)} experiment recommendations."
         )
+        omitted = list(run.metadata.get("omitted_predictors", []))
+        omitted_variables = list(run.metadata.get("omitted_variables", []))
+        if omitted or omitted_variables:
+            lines = []
+            if omitted:
+                lines.append(
+                    "Parameters: " + ", ".join(
+                        COLUMN_LABELS.get(field, field) for field in omitted
+                    )
+                )
+            if omitted_variables:
+                lines.append(
+                    "Experiment variables: " + ", ".join(
+                        COLUMN_LABELS.get(field, field) for field in omitted_variables
+                    )
+                )
+            QMessageBox.warning(
+                self,
+                "Parameters excluded",
+                "The active-learning run completed after automatically excluding "
+                "fields without usable values for the selected response:\n\n"
+                + "\n".join(lines),
+            )
 
     def set_run(self, run: ActiveLearningRunResult) -> None:
         self.current_run = run
@@ -512,10 +539,16 @@ class ActiveLearningPage(QWidget):
         self.acquisition_pill.set_value(f"{top:.3f}")
         self.uncertainty_pill.set_value(f"{median_uncertainty:.1f}%")
         self.reliability_pill.set_value(reliability, "success" if reliability in {"A", "B"} else "warning")
-        self.detail_label.setText(
+        detail = (
             f"{run.method} used {run.artifact['metadata'].get('observations', 0)} records. "
             f"Candidates were ranked with {run.strategy.lower()} and diversity-aware selection."
         )
+        omitted = list(run.metadata.get("omitted_predictors", []))
+        if omitted:
+            detail += " Excluded parameters: " + ", ".join(
+                COLUMN_LABELS.get(field, field) for field in omitted
+            ) + "."
+        self.detail_label.setText(detail)
 
         fields = [item.field for item in run.variables]
         self.x_axis_combo.blockSignals(True)
@@ -622,24 +655,9 @@ class ActiveLearningPage(QWidget):
         if figure is None:
             QMessageBox.information(self, "Nothing to export", "Generate the figure first.")
             return
-        EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-        path, selected_filter = QFileDialog.getSaveFileName(
-            self, "Export square figure", str(EXPORT_DIR / default_name),
-            "PNG image (*.png);;PDF document (*.pdf);;SVG image (*.svg);;TIFF image (*.tiff *.tif)",
+        open_figure_export_dialog(
+            self, figure, suggested_name=str(EXPORT_DIR / default_name)
         )
-        if not path:
-            return
-        destination = Path(path)
-        if not destination.suffix:
-            suffix = ".pdf" if "PDF" in selected_filter else ".svg" if "SVG" in selected_filter else ".tiff" if "TIFF" in selected_filter else ".png"
-            destination = destination.with_suffix(suffix)
-        try:
-            save_square_figure(figure, destination)
-            self.context.message.emit(
-                f"Square 600 dpi figure exported to {destination.name}."
-            )
-        except Exception as error:
-            QMessageBox.critical(self, "Figure export failed", str(error))
 
     def save_run(self) -> None:
         if self.current_run is None:

@@ -3,14 +3,19 @@ from __future__ import annotations
 from matplotlib.figure import Figure
 
 from gpc_dtwin.chart_style import ChartStyle, apply_chart_style
-from gpc_dtwin.figure_export import analyze_export_layout, export_profile
+from gpc_dtwin.figure_export import (
+    EXPORT_DPI_OPTIONS,
+    analyze_export_layout,
+    export_profile,
+)
 
 
-def test_export_profile_is_square_600_dpi():
-    profile = export_profile()
-    assert profile.size_inches == 6.0
-    assert profile.dpi == 600
-    assert profile.pixel_size == 3600
+def test_export_profiles_are_square_for_every_quality_option():
+    for dpi in EXPORT_DPI_OPTIONS:
+        profile = export_profile(dpi)
+        assert profile.size_inches == 6.0
+        assert profile.dpi == dpi
+        assert profile.pixel_size == 6 * dpi
 
 
 def test_export_layout_reports_outside_legend():

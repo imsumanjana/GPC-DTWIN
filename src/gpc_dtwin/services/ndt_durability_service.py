@@ -781,9 +781,11 @@ class NDTDurabilityService:
     ) -> TwinBuildResult:
         durable = cls.prepare_durability_records(dataframe, include_review_records)
         predictors = list(dict.fromkeys(predictors or DURABILITY_DEFAULT_PREDICTORS))
-        missing = [column for column in [response, *predictors] if column not in durable.columns]
-        if missing:
-            raise ValueError("Durability model fields are unavailable: " + ", ".join(missing))
+        if response not in durable.columns:
+            raise ValueError(
+                "The selected durability response is unavailable: "
+                + COLUMN_LABELS.get(response, response)
+            )
         result = DigitalTwinService().build_twin(
             durable,
             response=response,

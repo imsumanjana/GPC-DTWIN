@@ -1,5 +1,23 @@
 # Change Log
 
+## Version 1.1.5
+
+- Fixed grouped regression when `mix_id` or another grouping field is also selected as a predictor.
+- Added shared response-aware field compatibility checks.
+- Automatically excludes selected parameters with no usable response-overlapping values.
+- Added warning popups and omitted-field metadata across analytical workflows.
+- Added mandatory figure-export quality selection at 150, 300, 600, 1200, or 2400 dpi.
+- Preserved square 6 × 6 inch output and batch figure-tab export.
+- Added regression tests for the array-shape failure, parameter exclusion, and variable export quality.
+
+## Version 1.1.4
+
+- Removed full-width separator lines from all tab bars.
+- Added a reusable horizontally scrollable compact result toolbar.
+- Iconized export and save actions with tooltips and accessible names.
+- Consolidated metrics, selectors, and actions into one row across major analytical workspaces.
+- Added source regressions for tab-line removal and compact-toolbar adoption.
+
 ## Version 1.1.3
 
 - Consolidated Data Explorer, Quality Check, Visual Analysis, and Statistical Analysis into four tabs.

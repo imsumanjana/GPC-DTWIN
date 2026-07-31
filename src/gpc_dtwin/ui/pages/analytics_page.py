@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 
-from gpc_dtwin.figure_export import save_square_figure
+from gpc_dtwin.ui.export_preview_dialog import open_figure_export_dialog
 from gpc_dtwin.paths import EXPORT_DIR
 from gpc_dtwin.services.analytics_service import AnalyticsService
 from gpc_dtwin.services.data_service import DataService
@@ -97,22 +97,8 @@ class AnalyticsPage(QWidget):
         self.canvas.draw_idle()
 
     def export_figure(self) -> None:
-        EXPORT_DIR.mkdir(parents=True, exist_ok=True)
         key = self.chart_combo.currentData() or "chart"
-        default = EXPORT_DIR / f"{key}.png"
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export figure",
-            str(default),
-            "PNG image (*.png);;PDF document (*.pdf);;SVG image (*.svg);;TIFF image (*.tiff *.tif)",
+        open_figure_export_dialog(
+            self, self.figure, suggested_name=str(EXPORT_DIR / f"{key}.png")
         )
-        if not path:
-            return
-        destination = Path(path)
-        if not destination.suffix:
-            destination = destination.with_suffix(".png")
-        try:
-            save_square_figure(self.figure, destination)
-            self.context.message.emit(f"Figure exported to {destination.name}.")
-        except Exception as error:
-            QMessageBox.critical(self, "Figure export failed", str(error))
+

@@ -20,7 +20,7 @@ The automated checks cover:
 - NDT fusion and durability assessment,
 - optimization and inverse design,
 - active-learning recommendations and update comparison,
-- square 600 dpi figure export,
+- square figure export with selectable 150–2400 dpi quality,
 - report generation and dataset fingerprinting,
 - reproducibility-bundle creation and integrity verification,
 - ten scrollable primary workspaces plus four Data Explorer tabs,

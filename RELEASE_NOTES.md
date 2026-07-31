@@ -1,3 +1,56 @@
+# GPC-DTwin 1.1.5 Release Notes
+
+## Regression correction
+
+- Fixed the `object too deep for desired array` failure in grouped statistical regression.
+- Deduplicated grouping fields when a group identifier is also selected as a predictor.
+- Normalized cross-validation group arrays to one dimension.
+- Hardened numeric and categorical preprocessing for missing values and empty folds.
+
+## Universal automatic parameter exclusion
+
+- Response-incompatible selected fields are excluded automatically rather than terminating a valid workflow.
+- A warning popup lists every excluded parameter after a successful run.
+- Requested, used, and omitted fields are recorded in analytical metadata where applicable.
+- Applied to statistical regression, predictive models, digital twins, 3D surfaces, durability estimators, optimization surrogates, and active learning.
+- Predictor lists in regression and Digital Twin disable unavailable fields when the response changes.
+
+## Figure export quality popup
+
+- Every user-triggered figure export now opens a preview and quality selector.
+- Available quality options: 150, 300, 600, 1200, and 2400 dpi.
+- Every output remains square at 6 × 6 inches.
+- Batch figure export asks for one common format and quality before saving all tabs.
+- High-resolution selections display an export-time and memory warning.
+
+Copyright © 2026 Dr. Suman Jana. All rights reserved.  
+ORCID: https://orcid.org/0000-0002-9850-2169
+
+## Previous release details
+
+# GPC-DTwin 1.1.4 Release Notes
+
+## Tab-line correction
+
+- Removed the full-width separator line from every primary and nested tab row.
+- Retained the short blue accent beneath the selected tab.
+- Removed the negative tab offset that could visually expose a line above a tab row.
+
+## Compact analytical toolbars
+
+- Added one reusable, horizontally scrollable result toolbar.
+- Combined metrics, view selectors, map selectors, and result actions into one row.
+- Replaced text-heavy export and save buttons with icon-only controls.
+- Added complete tooltips and accessible names to every compact action.
+- Applied the compact toolbar to Predictive Models, Digital Twin, 3D Explorer,
+  NDT and Durability, Optimization, and Active Learning.
+- Narrow windows receive horizontal toolbar scrolling instead of wrapped or compressed controls.
+
+Copyright © 2026 Dr. Suman Jana. All rights reserved.  
+ORCID: https://orcid.org/0000-0002-9850-2169
+
+## Previous release details
+
 # GPC-DTwin 1.1.3 Release Notes
 
 ## Unified Data Explorer

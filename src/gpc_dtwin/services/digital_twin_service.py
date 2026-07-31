@@ -31,6 +31,7 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from gpc_dtwin import __version__
 from gpc_dtwin.chart_style import apply_chart_style
 from gpc_dtwin.columns import COLUMN_LABELS, MODEL_NUMERIC_PREDICTORS
+from gpc_dtwin.field_compatibility import assess_usable_fields, clean_selected_frame
 
 
 TWIN_METHODS = ("Gaussian Process", "Forest Ensemble")
@@ -40,7 +41,10 @@ REVIEW_STATES = {"REQUIRES_REVIEW", "CONFLICTING"}
 @dataclass
 class TwinBuildResult:
     response: str
+    requested_predictors: tuple[str, ...]
     predictors: tuple[str, ...]
+    omitted_predictors: tuple[str, ...]
+    omitted_reasons: dict[str, str]
     method: str
     confidence_percent: float
     observations: int
@@ -63,50 +67,112 @@ class DigitalTwinService:
         return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
 
     @staticmethod
-    def _prepare_working_data(
+    def _response_rows(
         dataframe: pd.DataFrame,
         response: str,
-        predictors: list[str],
         include_review_records: bool,
-        group_column: str,
-    ) -> tuple[pd.DataFrame, int]:
-        predictors = list(dict.fromkeys(predictors))
-        if not predictors:
-            raise ValueError("Select at least one predictor.")
-        if response in predictors:
-            predictors.remove(response)
-        required = [response, *predictors]
-        missing = [column for column in required if column not in dataframe.columns]
-        if missing:
-            raise ValueError("Missing selected fields: " + ", ".join(missing))
-
-        extra: list[str] = []
-        for column in ("record_id", "mix_id", "data_status", group_column):
-            if column in dataframe.columns and column not in required and column not in extra:
-                extra.append(column)
-        working = dataframe.loc[:, [*required, *extra]].copy()
-        original_count = len(working)
-
+    ) -> pd.DataFrame:
+        if response not in dataframe.columns:
+            raise ValueError(f"Missing selected response: {response}")
+        working = dataframe.copy()
         if "data_status" in working.columns:
             states = working["data_status"].astype("string").str.upper()
             keep = states.ne("EXCLUDED")
             if not include_review_records:
                 keep &= ~states.isin(REVIEW_STATES)
             working = working.loc[keep].copy()
-
         working[response] = pd.to_numeric(working[response], errors="coerce")
-        working = working.dropna(subset=[response])
-        unusable: list[str] = []
-        for predictor in predictors:
-            if predictor in MODEL_NUMERIC_PREDICTORS:
-                working[predictor] = pd.to_numeric(working[predictor], errors="coerce")
-            if working[predictor].isna().all():
-                unusable.append(predictor)
-        if unusable:
-            raise ValueError("Selected predictors contain no usable values: " + ", ".join(unusable))
+        return working.dropna(subset=[response]).copy()
+
+    @staticmethod
+    def predictor_availability(
+        dataframe: pd.DataFrame,
+        response: str,
+        predictors: list[str],
+        include_review_records: bool = False,
+    ) -> tuple[list[str], list[str]]:
+        rows = DigitalTwinService._response_rows(
+            dataframe, response, include_review_records
+        )
+        report = assess_usable_fields(
+            rows,
+            predictors,
+            numeric_fields=MODEL_NUMERIC_PREDICTORS,
+            excluded_fields={response},
+        )
+        return list(report.usable), list(report.omitted)
+
+    @staticmethod
+    def _prepare_working_data(
+        dataframe: pd.DataFrame,
+        response: str,
+        predictors: list[str],
+        include_review_records: bool,
+        group_column: str,
+    ) -> tuple[pd.DataFrame, int, list[str], list[str], dict[str, str]]:
+        requested = list(dict.fromkeys(predictors))
+        if not requested:
+            raise ValueError("Select at least one predictor.")
+        if response not in dataframe.columns:
+            raise ValueError(f"Missing selected response: {response}")
+
+        existing = [column for column in requested if column in dataframe.columns]
+        columns = list(dict.fromkeys([
+            response,
+            *existing,
+            *[
+                column for column in ("record_id", "mix_id", "data_status", group_column)
+                if column in dataframe.columns
+            ],
+        ]))
+        working = dataframe.loc[:, columns].copy()
+        original_count = len(working)
+        if "data_status" in working.columns:
+            states = working["data_status"].astype("string").str.upper()
+            keep = states.ne("EXCLUDED")
+            if not include_review_records:
+                keep &= ~states.isin(REVIEW_STATES)
+            working = working.loc[keep].copy()
+        working[response] = pd.to_numeric(working[response], errors="coerce")
+        working = working.dropna(subset=[response]).copy()
+
+        report = assess_usable_fields(
+            working,
+            requested,
+            numeric_fields=MODEL_NUMERIC_PREDICTORS,
+            excluded_fields={response},
+        )
+        usable = list(report.usable)
+        if not usable:
+            raise ValueError(
+                "None of the selected predictors has usable values for "
+                f"{COLUMN_LABELS.get(response, response)}."
+            )
+        cleaned = clean_selected_frame(
+            working,
+            usable,
+            numeric_fields=MODEL_NUMERIC_PREDICTORS,
+        )
+        for column in usable:
+            working[column] = cleaned[column]
+        keep_columns = list(dict.fromkeys([
+            response,
+            *usable,
+            *[
+                column for column in ("record_id", "mix_id", "data_status", group_column)
+                if column in working.columns
+            ],
+        ]))
+        working = working.loc[:, keep_columns].copy()
         if len(working) < 8:
             raise ValueError("At least eight usable response records are required.")
-        return working, original_count - len(working)
+        return (
+            working,
+            original_count - len(working),
+            usable,
+            list(report.omitted),
+            dict(report.reasons),
+        )
 
     @staticmethod
     def _preprocessor(predictors: list[str]) -> tuple[ColumnTransformer, list[str], list[str]]:
@@ -261,11 +327,13 @@ class DigitalTwinService:
         include_review_records: bool = False,
         group_column: str = "mix_id",
     ) -> TwinBuildResult:
-        predictors = [column for column in dict.fromkeys(predictors) if column != response]
+        requested_predictors = list(dict.fromkeys(predictors))
         if method not in TWIN_METHODS:
             raise ValueError(f"Unsupported twin method: {method}")
-        working, excluded_records = self._prepare_working_data(
-            dataframe, response, predictors, include_review_records, group_column
+        (
+            working, excluded_records, predictors, omitted_predictors, omitted_reasons
+        ) = self._prepare_working_data(
+            dataframe, response, requested_predictors, include_review_records, group_column
         )
         x = working[predictors].copy()
         y = working[response].to_numpy(dtype=float)
@@ -336,7 +404,10 @@ class DigitalTwinService:
             "method": method,
             "response": response,
             "response_label": COLUMN_LABELS.get(response, response),
+            "requested_predictors": requested_predictors,
             "predictors": predictors,
+            "omitted_predictors": omitted_predictors,
+            "omitted_predictor_reasons": omitted_reasons,
             "numeric_predictors": [c for c in predictors if c in MODEL_NUMERIC_PREDICTORS],
             "categorical_predictors": [c for c in predictors if c not in MODEL_NUMERIC_PREDICTORS],
             "confidence_percent": float(confidence_percent),
@@ -360,7 +431,10 @@ class DigitalTwinService:
         }
         return TwinBuildResult(
             response=response,
+            requested_predictors=tuple(requested_predictors),
             predictors=tuple(predictors),
+            omitted_predictors=tuple(omitted_predictors),
+            omitted_reasons=omitted_reasons,
             method=method,
             confidence_percent=float(confidence_percent),
             observations=len(working),

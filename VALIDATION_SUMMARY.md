@@ -1,4 +1,4 @@
-# GPC-DTwin v1.1.3 Validation Summary
+# GPC-DTwin v1.1.5 Validation Summary
 
 ## Scope
 
@@ -9,8 +9,8 @@ safeguards.
 
 ## Packaging-environment checks
 
-- 73 Python source and test files passed syntax compilation.
-- 63 non-Qt automated tests passed in the complete service suite.
+- 79 Python source and test files passed syntax compilation.
+- 78 non-GUI automated tests passed across the complete service and source-validation suite.
 - The PyQt-dependent database-context and GUI checks remain included for the Windows environment.
 - Built-in preset independence and expected preset behavior are tested.
 - Chart-style JSON round trips include all 1.1.1 fields.
@@ -86,3 +86,28 @@ ORCID: https://orcid.org/0000-0002-9850-2169
 - Unavailable fields are omitted without failing a valid model comparison.
 - Omitted predictors are reported in result and artifact metadata.
 - Predictors with valid overlap remain available for grouped cross-validation.
+
+
+## 1.1.4 tab and toolbar checks
+
+- Global tab styling contains no full-width tab-bar border.
+- The active-tab accent remains available.
+- Compact toolbars use one horizontal layout and horizontal overflow scrolling.
+- Icon actions expose tooltips and accessible names.
+- Six major analytical workspace modules use the compact toolbar.
+
+## 1.1.5 regression and field-compatibility checks
+
+- Grouped regression accepts the group identifier as a predictor without creating a two-dimensional group array.
+- Response-incompatible acid, mass, and exposure fields are omitted from mechanical-strength regression.
+- Digital Twin builds continue with compatible predictors and report omitted fields.
+- Active-learning and durability workflows inherit the same response-aware exclusion policy.
+- Warning and metadata paths preserve the list of omitted parameters.
+
+## 1.1.5 figure-export quality checks
+
+- Supported quality values are exactly 150, 300, 600, 1200, and 2400 dpi.
+- Export profiles preserve a 6 × 6 inch square canvas at every quality.
+- Raster pixel dimensions scale from 900 × 900 to 14400 × 14400.
+- All interactive page-level figure actions route through the quality/preview dialog.
+- Batch figure-tab export uses one selected DPI for every exported tab.

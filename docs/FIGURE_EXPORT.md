@@ -1,24 +1,25 @@
 # Figure Export
 
-Every chart export uses a shared square export engine.
+Every user-triggered figure export opens a preview and quality popup before the file is written.
 
-## Fixed output
+## Output geometry
 
-- Size: 6 × 6 inches
-- Resolution: 600 dpi
-- Raster dimensions: 3600 × 3600 pixels
-- Supported formats: PNG, PDF, SVG, TIF, and TIFF
+- Canvas: 6 × 6 inches
+- Aspect ratio: square
+- Quality options: 150, 300, 600, 1200, and 2400 dpi
+- Raster dimensions: 900 × 900, 1800 × 1800, 3600 × 3600, 7200 × 7200, or 14400 × 14400 pixels
+- Formats: PNG, PDF, SVG, TIFF, and TIF where supported
 
-The active chart style is reapplied immediately before saving. The interactive figure size and dpi are
-restored after export.
+The preview reports the selected pixel dimensions and warns that 1200 and 2400 dpi exports may require substantial memory and time. Interactive figure dimensions are restored after saving.
 
-## Preview
+## Single-figure export
 
-Open the chart palette icon, select the Export tab, and choose **Preview export**. The preview shows the
-fixed output dimensions and reports common clipping risks. Outside legends and custom anchors should be
-checked visually before saving.
+The export dialog provides format and DPI selectors together with a square preview and clipping guidance. The selected quality is passed to the common export engine.
 
-## Tabbed figure export
+## Tabbed and batch export
 
-A tabbed figure group provides compact actions for the current tab and for every tab. Export-all asks for
-a folder and a common output format, then saves one square 600 dpi file per tab using a safe filename.
+Exporting the current figure tab opens the same preview and quality popup. Exporting all tabs asks for the destination folder, common format, and common quality once, then writes one square file per tab.
+
+## Automated report figures
+
+Report generation remains reproducible and uses the default 600 dpi profile unless a future report-specific option is introduced.

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gpc-dtwin"
-version = "1.1.3"
+version = "1.1.5"
 description = "Release-ready desktop platform for geopolymer-concrete analytics, digital twins, optimization, active learning, and reproducible reporting"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"

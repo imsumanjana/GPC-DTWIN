@@ -85,7 +85,7 @@ the readable chart size.
 The Export tab in the appearance dialog opens a square export preview. It reports:
 
 - 6 × 6 inch output size;
-- 600 dpi;
+- selectable 150, 300, 600, 1200, or 2400 dpi;
 - 3600 × 3600 pixels for PNG and TIFF;
 - common clipping risks, including outside legends, custom legend anchors, long titles, many axes, and
   strong tick rotation.

@@ -38,7 +38,7 @@ fingerprints without importing or changing project data.
 
 ## Figure export
 
-All figure-export buttons produce square 600 dpi output through the common export engine. Raster
+All figure-export buttons produce square output with selectable 150–2400 dpi quality through the common export engine. Raster
 figures are 3600 × 3600 pixels.
 
 ## Application check

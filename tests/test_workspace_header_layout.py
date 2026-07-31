@@ -50,7 +50,7 @@ def test_workspace_pages_do_not_repeat_the_main_header():
         ), filename
 
 
-def test_tab_style_places_the_rule_below_not_above_the_tabs():
+def test_tab_style_has_no_full_width_rule():
     source = (
         Path(__file__).resolve().parents[1]
         / "src"
@@ -61,4 +61,5 @@ def test_tab_style_places_the_rule_below_not_above_the_tabs():
 
     assert "QTabWidget {{ border: 0; background: transparent; }}" in source
     assert "border-top: 0;" in source
-    assert "QTabBar {{ border: 0; border-bottom: 1px solid" in source
+    assert "QTabBar {{ border: 0; background: transparent; }}" in source
+    assert "QTabBar {{ border: 0; border-bottom:" not in source

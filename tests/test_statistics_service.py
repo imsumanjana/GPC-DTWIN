@@ -44,3 +44,31 @@ def test_anova_and_grouped_regression():
     assert regression.rmse >= 0
     assert regression.predictions.shape[0] == 20
     assert not regression.coefficients.empty
+
+
+def test_regression_excludes_empty_fields_and_handles_group_predictor_once():
+    dataframe = DataService.load_csv(DATASET)
+    service = StatisticsService()
+    regression = service.regression(
+        dataframe,
+        "compressive_strength_mpa",
+        [
+            "ggbs_percent_numeric",
+            "mechanical_test_age_days",
+            "mix_id",
+            "acid_type",
+            "acid_concentration_percent",
+            "initial_mass_kg",
+        ],
+        degree=1,
+        group_column="mix_id",
+    )
+    assert regression.observations >= 8
+    assert "mix_id" in regression.predictors
+    assert set(regression.omitted_predictors) >= {
+        "acid_type",
+        "acid_concentration_percent",
+        "initial_mass_kg",
+    }
+    assert regression.predictions["predicted"].notna().all()
+    assert regression.rmse >= 0

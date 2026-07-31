@@ -50,7 +50,7 @@ def test_response_specific_blank_predictor_is_adapted():
     assert not result.pareto_solutions.empty
 
 
-def test_tab_hierarchy_has_no_top_rule_and_keeps_lower_baseline():
+def test_tab_hierarchy_has_no_full_width_rule():
     source = (
         Path(__file__).resolve().parents[1]
         / "src"
@@ -59,10 +59,9 @@ def test_tab_hierarchy_has_no_top_rule_and_keeps_lower_baseline():
         / "theme.py"
     ).read_text(encoding="utf-8")
     assert "QTabWidget {{ border: 0; background: transparent; }}" in source
-    assert "QTabWidget::pane {{ border: 1px" in source
     assert "border-top: 0;" in source
-    assert "QTabBar {{ border: 0; border-bottom: 1px solid" in source
-    assert "margin-bottom: -1px;" in source
+    assert "QTabBar {{ border: 0; background: transparent; }}" in source
+    assert "QTabBar {{ border: 0; border-bottom:" not in source
 
 
 def test_digital_twin_response_map_uses_square_scroll_host():

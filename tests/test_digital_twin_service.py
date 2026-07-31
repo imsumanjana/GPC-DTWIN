@@ -114,3 +114,31 @@ def test_calibration_outputs_are_separate_tab_ready_figures():
     figures = service.calibration_figures(result)
     assert set(figures) == {"Prediction intervals", "Error & uncertainty", "Coverage"}
     assert all(len(figure.axes) == 1 for figure in figures.values())
+
+
+def test_twin_automatically_excludes_response_incompatible_predictors():
+    dataframe = DataService.load_csv(REFERENCE_DATASET)
+    service = DigitalTwinService()
+    result = service.build_twin(
+        dataframe,
+        response="compressive_strength_mpa",
+        predictors=[
+            "ggbs_percent_numeric",
+            "mechanical_test_age_days",
+            "acid_type",
+            "acid_concentration_percent",
+            "initial_mass_kg",
+            "initial_compressive_strength_mpa",
+        ],
+        method="Forest Ensemble",
+        include_review_records=True,
+    )
+    assert "ggbs_percent_numeric" in result.predictors
+    assert "mechanical_test_age_days" in result.predictors
+    assert set(result.omitted_predictors) >= {
+        "acid_type",
+        "acid_concentration_percent",
+        "initial_mass_kg",
+        "initial_compressive_strength_mpa",
+    }
+    assert result.artifact["metadata"]["omitted_predictors"]

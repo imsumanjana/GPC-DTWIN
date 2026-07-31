@@ -18,6 +18,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, PolynomialFeatures, StandardScaler
 
 from gpc_dtwin.columns import ANALYSIS_FACTOR_COLUMNS, ANALYSIS_NUMERIC_COLUMNS, COLUMN_LABELS
+from gpc_dtwin.field_compatibility import assess_usable_fields, clean_selected_frame
 
 
 @dataclass(frozen=True)
@@ -35,7 +36,10 @@ class AnovaResult:
 @dataclass(frozen=True)
 class RegressionResult:
     response: str
+    requested_predictors: tuple[str, ...]
     predictors: tuple[str, ...]
+    omitted_predictors: tuple[str, ...]
+    omitted_reasons: dict[str, str]
     degree: int
     observations: int
     rmse: float
@@ -157,29 +161,69 @@ class StatisticsService:
         return figure
 
     @staticmethod
+    def regression_predictor_availability(
+        dataframe: pd.DataFrame,
+        response: str,
+        predictors: list[str],
+    ) -> tuple[list[str], list[str]]:
+        if response not in dataframe.columns:
+            return [], list(dict.fromkeys(predictors))
+        response_values = pd.to_numeric(dataframe[response], errors="coerce")
+        subset = dataframe.loc[response_values.notna()].copy()
+        report = assess_usable_fields(
+            subset,
+            predictors,
+            numeric_fields=ANALYSIS_NUMERIC_COLUMNS,
+            excluded_fields={response},
+        )
+        return list(report.usable), list(report.omitted)
+
+    @staticmethod
     def regression(dataframe: pd.DataFrame, response: str, predictors: list[str],
                    degree: int = 1, group_column: str = "mix_id") -> RegressionResult:
-        predictors = list(dict.fromkeys(predictors))
-        if not predictors:
+        requested_predictors = list(dict.fromkeys(predictors))
+        if not requested_predictors:
             raise ValueError("Select at least one predictor.")
-        required = [response, *predictors]
-        missing = [column for column in required if column not in dataframe.columns]
-        if missing:
-            raise ValueError(f"Missing selected fields: {', '.join(missing)}")
+        if response not in dataframe.columns:
+            raise ValueError(f"Missing selected response: {response}")
 
-        working_columns = required + ([group_column] if group_column in dataframe.columns else [])
-        working = dataframe[working_columns].copy()
+        response_values = pd.to_numeric(dataframe[response], errors="coerce")
+        response_rows = dataframe.loc[response_values.notna()].copy()
+        report = assess_usable_fields(
+            response_rows,
+            requested_predictors,
+            numeric_fields=ANALYSIS_NUMERIC_COLUMNS,
+            excluded_fields={response},
+        )
+        predictors = list(report.usable)
+        if not predictors:
+            raise ValueError(
+                "None of the selected predictors has usable values for "
+                f"{COLUMN_LABELS.get(response, response)}."
+            )
+
+        working_columns = list(dict.fromkeys([
+            response,
+            *predictors,
+            *([group_column] if group_column in dataframe.columns else []),
+        ]))
+        working = dataframe.loc[:, working_columns].copy()
         working[response] = pd.to_numeric(working[response], errors="coerce")
-        working = working.dropna(subset=[response])
+        working = working.dropna(subset=[response]).copy()
         if len(working) < 5:
             raise ValueError("Regression requires at least five response observations.")
 
         numeric_predictors = [column for column in predictors if column in ANALYSIS_NUMERIC_COLUMNS]
         categorical_predictors = [column for column in predictors if column not in numeric_predictors]
-        for column in numeric_predictors:
-            working[column] = pd.to_numeric(working[column], errors="coerce")
+        cleaned = clean_selected_frame(
+            working,
+            predictors,
+            numeric_fields=ANALYSIS_NUMERIC_COLUMNS,
+        )
+        for column in predictors:
+            working[column] = cleaned[column]
 
-        numeric_steps = [("imputer", SimpleImputer(strategy="median"))]
+        numeric_steps = [("imputer", SimpleImputer(strategy="median", keep_empty_features=True))]
         if degree > 1:
             numeric_steps.append(("polynomial", PolynomialFeatures(degree=degree, include_bias=False)))
         numeric_steps.append(("scale", StandardScaler()))
@@ -190,17 +234,28 @@ class StatisticsService:
             transformers.append((
                 "categorical",
                 Pipeline([
-                    ("imputer", SimpleImputer(strategy="most_frequent")),
-                    ("onehot", OneHotEncoder(handle_unknown="ignore")),
+                    ("imputer", SimpleImputer(
+                        strategy="constant", fill_value="Missing", keep_empty_features=True
+                    )),
+                    ("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
                 ]),
                 categorical_predictors,
             ))
         preprocessing = ColumnTransformer(transformers=transformers, remainder="drop")
         model = Pipeline([("preprocess", preprocessing), ("model", LinearRegression())])
 
-        x = working[predictors]
-        y = working[response].to_numpy(dtype=float)
-        groups = working[group_column].astype(str).to_numpy() if group_column in working.columns else None
+        x = working.loc[:, predictors].copy()
+        y = working[response].to_numpy(dtype=float).reshape(-1)
+        groups = None
+        if group_column in working.columns:
+            groups = (
+                working[group_column]
+                .astype("string")
+                .fillna("Missing")
+                .astype(str)
+                .to_numpy()
+                .reshape(-1)
+            )
         unique_groups = len(np.unique(groups)) if groups is not None else 0
         if groups is not None and unique_groups >= 3:
             splits = min(5, unique_groups)
@@ -215,13 +270,14 @@ class StatisticsService:
             predictions = cross_val_predict(model, x, y, cv=cv)
             cv_method = f"{splits}-fold cross-validation"
 
+        predictions = np.asarray(predictions, dtype=float).reshape(-1)
         rmse = float(np.sqrt(mean_squared_error(y, predictions)))
         mae = float(mean_absolute_error(y, predictions))
         r2 = float(r2_score(y, predictions))
 
         model.fit(x, y)
         feature_names = model.named_steps["preprocess"].get_feature_names_out()
-        coefficients = model.named_steps["model"].coef_
+        coefficients = np.asarray(model.named_steps["model"].coef_, dtype=float).reshape(-1)
         coefficient_table = pd.DataFrame({
             "feature": [str(name).replace("numeric__", "").replace("categorical__", "") for name in feature_names],
             "coefficient": coefficients,
@@ -237,7 +293,10 @@ class StatisticsService:
 
         return RegressionResult(
             response=response,
+            requested_predictors=tuple(requested_predictors),
             predictors=tuple(predictors),
+            omitted_predictors=tuple(report.omitted),
+            omitted_reasons=dict(report.reasons),
             degree=int(degree),
             observations=len(working),
             rmse=rmse,
@@ -254,12 +313,13 @@ class StatisticsService:
         axis = figure.add_subplot(111)
         observed = result.predictions["observed"]
         predicted = result.predictions["predicted"]
-        axis.scatter(observed, predicted)
+        axis.scatter(observed, predicted, label="Cross-validated predictions")
         minimum = min(float(observed.min()), float(predicted.min()))
         maximum = max(float(observed.max()), float(predicted.max()))
-        axis.plot([minimum, maximum], [minimum, maximum], linestyle="--", linewidth=1)
+        axis.plot([minimum, maximum], [minimum, maximum], linestyle="--", linewidth=1, label="Ideal agreement")
         axis.set_xlabel("Observed")
         axis.set_ylabel("Cross-validated prediction")
         axis.grid(True, alpha=0.25)
         axis.set_title(f"RMSE {result.rmse:.3f} · MAE {result.mae:.3f} · R² {result.r2:.3f}")
+        axis.legend()
         return figure

@@ -1,0 +1,143 @@
+{
+  "schema": "gpc-dtwin-reproducibility-manifest-1",
+  "application": {
+    "name": "GPC-DTwin",
+    "version": "1.1.5"
+  },
+  "attribution": {
+    "copyright": "Copyright © 2026 Dr. Suman Jana. All rights reserved.",
+    "holder": "Dr. Suman Jana",
+    "orcid": "0000-0002-9850-2169",
+    "orcid_url": "https://orcid.org/0000-0002-9850-2169"
+  },
+  "generated_utc": "2026-07-31T12:39:48Z",
+  "report": {
+    "title": "Materials Analytics Report",
+    "project_label": "GPC-DTwin Project",
+    "prepared_by": "Dr. Suman Jana",
+    "include_figures": true,
+    "include_dataset_preview": true,
+    "include_artifact_inventory": true,
+    "preview_rows": 20
+  },
+  "environment": {
+    "python": "3.12.10",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "numpy": "2.5.1",
+    "pandas": "3.0.5",
+    "matplotlib": "3.11.1"
+  },
+  "dataset": {
+    "records": 72,
+    "fields": 44,
+    "mixes": 10,
+    "record_groups": 6,
+    "sha256": "a8087017eb93cb2bf999dc8d5fba6d32a658270e30f4ff4b72c92b578b907742"
+  },
+  "quality": {
+    "critical": 0,
+    "warning": 14,
+    "information": 0,
+    "total": 14,
+    "sha256": "b99162f045e92f46586ec17ad1e32d4aefccadbd8e806c49bd4951159c6b9a72"
+  },
+  "stored_artifacts": {
+    "count": 8,
+    "items": [
+      {
+        "category": "Predictive models",
+        "name": "split_tensile_strength_mpa__extra_trees__20260731T123050607637Z.joblib",
+        "relative_path": "split_tensile_strength_mpa__extra_trees__20260731T123050607637Z.joblib",
+        "size_bytes": 496197,
+        "modified_utc": "2026-07-31T12:30:50Z",
+        "sha256": "93fa17d1d9457c8f7ef307d96be2eb16124a157720875d957474009b97614526"
+      },
+      {
+        "category": "Predictive models",
+        "name": "split_tensile_strength_mpa__extra_trees__20260731T123050607637Z.json",
+        "relative_path": "split_tensile_strength_mpa__extra_trees__20260731T123050607637Z.json",
+        "size_bytes": 3042,
+        "modified_utc": "2026-07-31T12:30:50Z",
+        "sha256": "ad2a27cbad4f08e0197ef4d0bfd93fcbd601e6d8a0769d24e80005897d494b40"
+      },
+      {
+        "category": "Digital twins",
+        "name": "compressive_strength_mpa__gaussian_process__20260730T184122996367Z.joblib",
+        "relative_path": "compressive_strength_mpa__gaussian_process__20260730T184122996367Z.joblib",
+        "size_bytes": 31244,
+        "modified_utc": "2026-07-30T18:41:23Z",
+        "sha256": "25a3ca622028d4a8594c8d340a5fc1f0f0856ff162a63828e6e7856f618043d0"
+      },
+      {
+        "category": "Digital twins",
+        "name": "compressive_strength_mpa__gaussian_process__20260730T184122996367Z.json",
+        "relative_path": "compressive_strength_mpa__gaussian_process__20260730T184122996367Z.json",
+        "size_bytes": 2543,
+        "modified_utc": "2026-07-30T18:41:23Z",
+        "sha256": "0646a8ffe441322266ef87a6b34f82b2ce9fe684c1bc87b6b780f28d426ae279"
+      },
+      {
+        "category": "Digital twins",
+        "name": "split_tensile_strength_mpa__forest_ensemble__20260731T123259962769Z.joblib",
+        "relative_path": "split_tensile_strength_mpa__forest_ensemble__20260731T123259962769Z.joblib",
+        "size_bytes": 484150,
+        "modified_utc": "2026-07-31T12:33:00Z",
+        "sha256": "260e92e241e125c1063f0b4f294b28ddf90be83dd2b24f3daaa56e2de7bfa033"
+      },
+      {
+        "category": "Digital twins",
+        "name": "split_tensile_strength_mpa__forest_ensemble__20260731T123259962769Z.json",
+        "relative_path": "split_tensile_strength_mpa__forest_ensemble__20260731T123259962769Z.json",
+        "size_bytes": 2746,
+        "modified_utc": "2026-07-31T12:33:00Z",
+        "sha256": "f620b0ade18b663f56a87def2ec2f711a08705625e5cc31c25c676b2a2ee3acd"
+      },
+      {
+        "category": "NDT models",
+        "name": "ndt_composition_ndt_ridge_regression_20260730_184149.joblib",
+        "relative_path": "ndt_composition_ndt_ridge_regression_20260730_184149.joblib",
+        "size_bytes": 3589,
+        "modified_utc": "2026-07-30T18:41:49Z",
+        "sha256": "a5269d913995ec14a37a2e61e14cff22d4f7805c74e6d383a5eaaf7e0f329310"
+      },
+      {
+        "category": "NDT models",
+        "name": "ndt_composition_ndt_ridge_regression_20260730_184149.json",
+        "relative_path": "ndt_composition_ndt_ridge_regression_20260730_184149.json",
+        "size_bytes": 1399,
+        "modified_utc": "2026-07-30T18:41:49Z",
+        "sha256": "f80a9e2f7e59c3671c22d5b4b89d05db55d3fd774b7c8113213880e373f4da97"
+      }
+    ]
+  },
+  "files": {
+    "active_dataset.csv": {
+      "size_bytes": 23755,
+      "sha256": "bbe11e0c978892d7617a0ec3c3afa16856e89140ecc6b7f25c76d91120b9fca9"
+    },
+    "quality_findings.csv": {
+      "size_bytes": 1796,
+      "sha256": "23660d4d84400843697a6bd813afe95abe3ad1e29781a59dfa89609abd661af1"
+    },
+    "GPC_DTwin_Report.html": {
+      "size_bytes": 16418,
+      "sha256": "06faf236eff1b6a88a5525a5b898a1fc2d3aebc06cc9022c6cc6a9f2ddfa77a9"
+    },
+    "figures/data_status.png": {
+      "size_bytes": 162169,
+      "sha256": "899afe33c732323be19a13f1f7eb03822f1b60bd284d48f35a799e9f12e721db"
+    },
+    "figures/property_coverage.png": {
+      "size_bytes": 287420,
+      "sha256": "d66ea3893daeed294aef593b0b901b05504e84ff205f32072cd353d1e9f7158d"
+    },
+    "figures/quality_findings.png": {
+      "size_bytes": 149856,
+      "sha256": "fccea1fde10abed75e07c3df6e0c14d4e858c60032950d7451cc08f33bcc6775"
+    },
+    "figures/strength_profile.png": {
+      "size_bytes": 334727,
+      "sha256": "d290a80de5905c15114f44b9871651b9247df5c94c3dc4fef4382d6a9b6c0886"
+    }
+  }
+}

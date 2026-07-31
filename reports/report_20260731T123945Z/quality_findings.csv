@@ -1,0 +1,15 @@
+﻿severity,rule,record_id,mix_id,field,message,data_block,data_locator
+WARNING,REVIEW_FLAG,GPC-0001,M1,data_status,Record is marked 'REQUIRES_REVIEW'.,Workability and AAS:B response,GPC-0001
+WARNING,REVIEW_FLAG,GPC-0013,M5,data_status,Record is marked 'REQUIRES_REVIEW'.,Workability and AAS:B response,GPC-0013
+WARNING,REVIEW_FLAG,GPC-0016,M6,data_status,Record is marked 'REQUIRES_REVIEW'.,Workability and AAS:B response,GPC-0016
+WARNING,REVIEW_FLAG,GPC-0019,M7,data_status,Record is marked 'REQUIRES_REVIEW'.,Workability and AAS:B response,GPC-0019
+WARNING,REVIEW_FLAG,GPC-0022,M8,data_status,Record is marked 'REQUIRES_REVIEW'.,Workability and AAS:B response,GPC-0022
+WARNING,REVIEW_FLAG,GPC-0025,M9,data_status,Record is marked 'REQUIRES_REVIEW'.,Workability and AAS:B response,GPC-0025
+WARNING,REVIEW_FLAG,GPC-0028,M10,data_status,Record is marked 'REQUIRES_REVIEW'.,Workability and AAS:B response,GPC-0028
+WARNING,REVIEW_FLAG,GPC-0041,M1,data_status,Record is marked 'REQUIRES_REVIEW'.,Ambient 28-day mechanical properties,GPC-0041
+WARNING,REVIEW_FLAG,GPC-0045,M5,data_status,Record is marked 'REQUIRES_REVIEW'.,Ambient 28-day mechanical properties,GPC-0045
+WARNING,REVIEW_FLAG,GPC-0046,M6,data_status,Record is marked 'REQUIRES_REVIEW'.,Ambient 28-day mechanical properties,GPC-0046
+WARNING,REVIEW_FLAG,GPC-0047,M7,data_status,Record is marked 'REQUIRES_REVIEW'.,Ambient 28-day mechanical properties,GPC-0047
+WARNING,REVIEW_FLAG,GPC-0048,M8,data_status,Record is marked 'REQUIRES_REVIEW'.,Ambient 28-day mechanical properties,GPC-0048
+WARNING,REVIEW_FLAG,GPC-0049,M9,data_status,Record is marked 'REQUIRES_REVIEW'.,Ambient 28-day mechanical properties,GPC-0049
+WARNING,REVIEW_FLAG,GPC-0050,M10,data_status,Record is marked 'REQUIRES_REVIEW'.,Ambient 28-day mechanical properties,GPC-0050

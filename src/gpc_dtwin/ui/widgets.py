@@ -2,10 +2,80 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtWidgets import (
+    QFrame, QHBoxLayout, QLabel, QScrollArea, QSizePolicy, QStyle,
+    QToolButton, QVBoxLayout, QWidget,
+)
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
+
+
+class CompactToolbar(QScrollArea):
+    """Single-row toolbar that scrolls horizontally rather than wrapping."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("CompactToolbarScroll")
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setWidgetResizable(True)
+        self.setFixedHeight(56)
+
+        self.content = QFrame()
+        self.content.setObjectName("CompactToolbar")
+        self.content.setSizePolicy(
+            QSizePolicy.Policy.MinimumExpanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.row = QHBoxLayout(self.content)
+        self.row.setContentsMargins(10, 7, 10, 7)
+        self.row.setSpacing(7)
+        self.setWidget(self.content)
+
+    def add_metric(self, label: str, pill: QWidget) -> None:
+        caption = QLabel(label)
+        caption.setObjectName("CompactToolbarLabel")
+        caption.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        self.row.addWidget(caption)
+        self.row.addWidget(pill)
+
+    def add_widget(self, widget: QWidget, stretch: int = 0) -> None:
+        self.row.addWidget(widget, stretch)
+
+    def add_label(self, text: str) -> QLabel:
+        label = QLabel(text)
+        label.setObjectName("CompactToolbarLabel")
+        self.row.addWidget(label)
+        return label
+
+    def add_stretch(self, stretch: int = 1) -> None:
+        self.row.addStretch(stretch)
+
+    def add_action(
+        self,
+        icon: QStyle.StandardPixmap,
+        tooltip: str,
+        slot,
+        *,
+        accent: bool = False,
+    ) -> QToolButton:
+        button = QToolButton(self.content)
+        button.setObjectName("CompactToolbarButton")
+        button.setProperty("accent", accent)
+        button.setIcon(button.style().standardIcon(icon))
+        button.setIconSize(QSize(18, 18))
+        button.setToolTip(tooltip)
+        button.setAccessibleName(tooltip)
+        button.setFixedSize(34, 32)
+        button.clicked.connect(slot)
+        self.row.addWidget(button)
+        return button
+
+    def finalize(self) -> None:
+        self.content.adjustSize()
+        self.content.setMinimumWidth(max(self.content.sizeHint().width(), 420))
 
 
 class MetricCard(QFrame):

@@ -10,7 +10,7 @@ from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QAbstractItemView, QApplication, QCheckBox, QComboBox, QDoubleSpinBox,
     QFileDialog, QFormLayout, QFrame, QHBoxLayout, QLabel, QListWidget,
-    QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QSpinBox, QSplitter,
+    QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QSpinBox, QSplitter, QStyle,
     QTableView, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
 )
 
@@ -18,7 +18,7 @@ from gpc_dtwin.columns import (
     COLUMN_LABELS, MODEL_DEFAULT_PREDICTORS, MODEL_NUMERIC_PREDICTORS,
     MODEL_PREDICTOR_COLUMNS, MODEL_RESPONSE_COLUMNS,
 )
-from gpc_dtwin.figure_export import save_square_figure
+from gpc_dtwin.ui.export_preview_dialog import open_figure_export_dialog
 from gpc_dtwin.paths import EXPORT_DIR, OPTIMIZATION_DIR
 from gpc_dtwin.services.optimization_service import (
     ConstraintDefinition, InverseDesignResult, ObjectiveDefinition,
@@ -26,7 +26,7 @@ from gpc_dtwin.services.optimization_service import (
 )
 from gpc_dtwin.ui.models import DataFrameModel
 from gpc_dtwin.ui.figure_tabs import FigureTabs
-from gpc_dtwin.ui.widgets import SectionHeader, ValuePill
+from gpc_dtwin.ui.widgets import CompactToolbar, SectionHeader, ValuePill
 
 
 class OptimizationPage(QWidget):
@@ -185,12 +185,12 @@ class OptimizationPage(QWidget):
         results_layout = QVBoxLayout(results)
         results_layout.setContentsMargins(0, 0, 0, 0)
         results_layout.setSpacing(10)
-        metrics = QHBoxLayout()
         self.pareto_count_pill = ValuePill()
         self.feasible_pill = ValuePill()
         self.evaluated_pill = ValuePill()
         self.best_reliability_pill = ValuePill()
         self.best_score_pill = ValuePill()
+        toolbar = CompactToolbar()
         for label, pill in (
             ("Pareto solutions", self.pareto_count_pill),
             ("Feasible population", self.feasible_pill),
@@ -198,28 +198,30 @@ class OptimizationPage(QWidget):
             ("Best reliability", self.best_reliability_pill),
             ("Compromise score", self.best_score_pill),
         ):
-            metrics.addWidget(QLabel(label))
-            metrics.addWidget(pill)
-        metrics.addStretch()
-        results_layout.addLayout(metrics)
+            toolbar.add_metric(label, pill)
+        toolbar.add_stretch()
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_DialogSaveButton,
+            "Export Pareto results",
+            self.export_optimization,
+        )
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_FileDialogDetailedView,
+            "Export Pareto figure",
+            self.export_optimization_figure,
+        )
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_DriveHDIcon,
+            "Save optimization run",
+            self.save_optimization,
+        )
+        toolbar.finalize()
+        results_layout.addWidget(toolbar)
 
         self.optimization_detail = QLabel("Configure objectives, bounds, and constraints, then run the search.")
         self.optimization_detail.setObjectName("Muted")
         self.optimization_detail.setWordWrap(True)
         results_layout.addWidget(self.optimization_detail)
-
-        actions = QHBoxLayout()
-        actions.addStretch()
-        export_results = QPushButton("Export results")
-        export_results.clicked.connect(self.export_optimization)
-        export_figure = QPushButton("Export figure")
-        export_figure.clicked.connect(self.export_optimization_figure)
-        save_run = QPushButton("Save run")
-        save_run.clicked.connect(self.save_optimization)
-        actions.addWidget(export_results)
-        actions.addWidget(export_figure)
-        actions.addWidget(save_run)
-        results_layout.addLayout(actions)
 
         self.optimization_results_tabs = QTabWidget()
         self.optimization_results_tabs.currentChanged.connect(self._optimizer_result_tab_changed)
@@ -310,39 +312,41 @@ class OptimizationPage(QWidget):
         configuration_layout.addLayout(inverse_options)
         layout.addWidget(configuration)
 
-        metrics = QHBoxLayout()
         self.inverse_evaluated_pill = ValuePill()
         self.inverse_satisfaction_pill = ValuePill()
         self.inverse_reliability_pill = ValuePill()
         self.inverse_loss_pill = ValuePill()
+        toolbar = CompactToolbar()
         for label, pill in (
             ("Candidates evaluated", self.inverse_evaluated_pill),
             ("Targets satisfied", self.inverse_satisfaction_pill),
             ("Best reliability", self.inverse_reliability_pill),
             ("Design loss", self.inverse_loss_pill),
         ):
-            metrics.addWidget(QLabel(label))
-            metrics.addWidget(pill)
-        metrics.addStretch()
-        layout.addLayout(metrics)
+            toolbar.add_metric(label, pill)
+        toolbar.add_stretch()
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_DialogSaveButton,
+            "Export inverse-design recommendations",
+            self.export_inverse,
+        )
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_FileDialogDetailedView,
+            "Export inverse-design figure",
+            self.export_inverse_figure,
+        )
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_DriveHDIcon,
+            "Save inverse-design run",
+            self.save_inverse,
+        )
+        toolbar.finalize()
+        layout.addWidget(toolbar)
 
         self.inverse_detail = QLabel("Set one or more targets to rank compatible material scenarios.")
         self.inverse_detail.setObjectName("Muted")
         self.inverse_detail.setWordWrap(True)
         layout.addWidget(self.inverse_detail)
-
-        actions = QHBoxLayout()
-        actions.addStretch()
-        export_results = QPushButton("Export recommendations")
-        export_results.clicked.connect(self.export_inverse)
-        export_figure = QPushButton("Export figure")
-        export_figure.clicked.connect(self.export_inverse_figure)
-        save_run = QPushButton("Save run")
-        save_run.clicked.connect(self.save_inverse)
-        actions.addWidget(export_results)
-        actions.addWidget(export_figure)
-        actions.addWidget(save_run)
-        layout.addLayout(actions)
 
         splitter = QSplitter()
         self.inverse_model = DataFrameModel()
@@ -639,10 +643,31 @@ class OptimizationPage(QWidget):
             self.context.message.emit(
                 f"Pareto search completed with {len(result.pareto_solutions)} solutions."
             )
+            self._warn_surrogate_exclusions(result.surrogate_summary, "Optimization")
         except Exception as error:
             QMessageBox.critical(self, "Optimization failed", str(error))
         finally:
             QApplication.restoreOverrideCursor()
+
+    def _warn_surrogate_exclusions(self, summary: pd.DataFrame, workflow: str) -> None:
+        if summary.empty or "dropped_predictors" not in summary.columns:
+            return
+        fields: list[str] = []
+        for value in summary["dropped_predictors"].astype(str):
+            fields.extend(part.strip() for part in value.split(",") if part.strip())
+        unique = list(dict.fromkeys(fields))
+        if not unique:
+            return
+        QMessageBox.warning(
+            self,
+            "Parameters excluded",
+            f"{workflow} completed after automatically excluding response-incompatible "
+            "parameters without usable values:\n\n"
+            + "\n".join(
+                f"• {COLUMN_LABELS.get(field, field)}" for field in unique
+            )
+            + "\n\nReview the surrogate-validation table for response-specific details.",
+        )
 
     def _display_optimization(self, result: OptimizationRunResult) -> None:
         self.pareto_model.set_dataframe(result.pareto_solutions)
@@ -702,6 +727,7 @@ class OptimizationPage(QWidget):
             self.context.message.emit(
                 f"Inverse design ranked {len(result.recommendations)} alternatives."
             )
+            self._warn_surrogate_exclusions(result.surrogate_summary, "Inverse design")
         except Exception as error:
             QMessageBox.critical(self, "Inverse design failed", str(error))
         finally:
@@ -775,20 +801,11 @@ class OptimizationPage(QWidget):
     @staticmethod
     def _save_figure(figure: Figure | None, parent: QWidget, default_name: str) -> None:
         if figure is None:
-            QMessageBox.information(parent, "Export", "No figure is available.")
+            QMessageBox.information(parent, "Nothing to export", "Generate a figure first.")
             return
-        EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-        path, selected_filter = QFileDialog.getSaveFileName(
-            parent, "Export figure", str(EXPORT_DIR / default_name),
-            "PNG image (*.png);;PDF document (*.pdf);;SVG image (*.svg);;TIFF image (*.tiff)"
+        open_figure_export_dialog(
+            parent, figure, suggested_name=str(EXPORT_DIR / default_name)
         )
-        if not path:
-            return
-        destination = Path(path)
-        if not destination.suffix:
-            suffix = ".pdf" if "PDF" in selected_filter else ".svg" if "SVG" in selected_filter else ".tiff" if "TIFF" in selected_filter else ".png"
-            destination = destination.with_suffix(suffix)
-        save_square_figure(figure, destination)
 
     def export_optimization_figure(self) -> None:
         key = "parallel" if self.optimization_results_tabs.currentIndex() == 1 else "pareto"

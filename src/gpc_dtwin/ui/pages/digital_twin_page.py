@@ -8,7 +8,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame,
     QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
-    QSpinBox, QSplitter, QTableView, QTableWidget, QTableWidgetItem, QTabWidget,
+    QSpinBox, QSplitter, QStyle, QTableView, QTableWidget, QTableWidgetItem, QTabWidget,
     QVBoxLayout, QWidget,
 )
 
@@ -16,13 +16,13 @@ from gpc_dtwin.columns import (
     COLUMN_LABELS, MODEL_DEFAULT_PREDICTORS, MODEL_NUMERIC_PREDICTORS,
     MODEL_PREDICTOR_COLUMNS, MODEL_RESPONSE_COLUMNS,
 )
-from gpc_dtwin.figure_export import save_square_figure
+from gpc_dtwin.ui.export_preview_dialog import open_figure_export_dialog
 from gpc_dtwin.paths import EXPORT_DIR, TWIN_DIR
 from gpc_dtwin.services.digital_twin_service import DigitalTwinService, TwinBuildResult
 from gpc_dtwin.ui.models import DataFrameModel
 from gpc_dtwin.ui.figure_tabs import FigureTabs
 from gpc_dtwin.ui.scrolling import scrollable_panel
-from gpc_dtwin.ui.widgets import SectionHeader, ValuePill
+from gpc_dtwin.ui.widgets import CompactToolbar, SectionHeader, ValuePill
 
 
 class DigitalTwinPage(QWidget):
@@ -67,6 +67,7 @@ class DigitalTwinPage(QWidget):
         controls_layout.setSpacing(10)
         form = QFormLayout()
         self.response_combo = QComboBox()
+        self.response_combo.currentIndexChanged.connect(self.refresh_predictor_availability)
         self.method_combo = QComboBox()
         self.method_combo.addItems(self.service.method_names())
         self.confidence_combo = QComboBox()
@@ -83,7 +84,14 @@ class DigitalTwinPage(QWidget):
         self.predictor_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         controls_layout.addWidget(self.predictor_list, 1)
         self.include_review = QCheckBox("Include records marked for review")
+        self.include_review.toggled.connect(self.refresh_predictor_availability)
         controls_layout.addWidget(self.include_review)
+        self.predictor_note = QLabel(
+            "Unavailable predictors are excluded automatically for the selected response."
+        )
+        self.predictor_note.setObjectName("Muted")
+        self.predictor_note.setWordWrap(True)
+        controls_layout.addWidget(self.predictor_note)
         build_button = QPushButton("Build digital twin")
         build_button.setObjectName("PrimaryButton")
         build_button.clicked.connect(self.build_twin)
@@ -95,13 +103,13 @@ class DigitalTwinPage(QWidget):
         results = QWidget()
         results_layout = QVBoxLayout(results)
         results_layout.setContentsMargins(0, 0, 0, 0)
-        metrics = QHBoxLayout()
         self.method_pill = ValuePill()
         self.rmse_pill = ValuePill()
         self.r2_pill = ValuePill()
         self.coverage_pill = ValuePill()
         self.width_pill = ValuePill()
         self.records_pill = ValuePill()
+        toolbar = CompactToolbar()
         for label, pill in (
             ("Method", self.method_pill),
             ("RMSE", self.rmse_pill),
@@ -110,25 +118,25 @@ class DigitalTwinPage(QWidget):
             ("Mean width", self.width_pill),
             ("Records", self.records_pill),
         ):
-            metrics.addWidget(QLabel(label))
-            metrics.addWidget(pill)
-        metrics.addStretch()
-        results_layout.addLayout(metrics)
+            toolbar.add_metric(label, pill)
+        toolbar.add_stretch()
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_DialogSaveButton,
+            "Export calibration data",
+            self.export_calibration,
+        )
+        toolbar.add_action(
+            QStyle.StandardPixmap.SP_FileDialogDetailedView,
+            "Export calibration figure",
+            self.export_calibration_figure,
+        )
+        toolbar.finalize()
+        results_layout.addWidget(toolbar)
 
         self.calibration_label = QLabel("Choose a response and predictors, then build a twin.")
         self.calibration_label.setObjectName("Muted")
         self.calibration_label.setWordWrap(True)
         results_layout.addWidget(self.calibration_label)
-
-        toolbar = QHBoxLayout()
-        toolbar.addStretch()
-        export_table = QPushButton("Export calibration")
-        export_table.clicked.connect(self.export_calibration)
-        export_figure = QPushButton("Export figure")
-        export_figure.clicked.connect(self.export_calibration_figure)
-        toolbar.addWidget(export_table)
-        toolbar.addWidget(export_figure)
-        results_layout.addLayout(toolbar)
 
         calibration_splitter = QSplitter()
         self.calibration_model = DataFrameModel()
@@ -327,6 +335,54 @@ class DigitalTwinPage(QWidget):
             checked = existing.get(value, value in MODEL_DEFAULT_PREDICTORS)
             item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
             self.predictor_list.addItem(item)
+        self.refresh_predictor_availability()
+
+    def refresh_predictor_availability(self, *_args) -> None:
+        if not hasattr(self, "predictor_list"):
+            return
+        response = self.response_combo.currentData()
+        if not response:
+            return
+        try:
+            available, unavailable = self.service.predictor_availability(
+                self.context.dataframe,
+                str(response),
+                MODEL_PREDICTOR_COLUMNS,
+                include_review_records=self.include_review.isChecked(),
+            )
+        except Exception:
+            return
+        available_set = set(available)
+        unavailable_set = set(unavailable)
+        labels: list[str] = []
+        for index in range(self.predictor_list.count()):
+            item = self.predictor_list.item(index)
+            field = str(item.data(Qt.ItemDataRole.UserRole))
+            enabled = field in available_set and field != response
+            flags = item.flags()
+            if enabled:
+                item.setFlags(flags | Qt.ItemFlag.ItemIsEnabled)
+                item.setToolTip("")
+            else:
+                item.setFlags(flags & ~Qt.ItemFlag.ItemIsEnabled)
+                item.setCheckState(Qt.CheckState.Unchecked)
+                if field == response:
+                    item.setToolTip("The response cannot also be a predictor.")
+                else:
+                    item.setToolTip(
+                        "No usable values overlap the selected response in the active dataset."
+                    )
+                    if field in unavailable_set:
+                        labels.append(COLUMN_LABELS.get(field, field))
+        if labels:
+            self.predictor_note.setText(
+                f"{len(labels)} unavailable parameters are excluded automatically for "
+                f"{COLUMN_LABELS.get(str(response), str(response))}."
+            )
+        else:
+            self.predictor_note.setText(
+                "All listed predictors have usable overlap with the selected response."
+            )
 
     def _checked_predictors(self) -> list[str]:
         return [
@@ -356,6 +412,18 @@ class DigitalTwinPage(QWidget):
             self.context.message.emit(
                 f"Digital twin created with {result.method} using {result.observations} records."
             )
+            if result.omitted_predictors:
+                labels = [
+                    COLUMN_LABELS.get(field, field)
+                    for field in result.omitted_predictors
+                ]
+                QMessageBox.warning(
+                    self,
+                    "Parameters excluded",
+                    "The digital twin was built after automatically excluding parameters "
+                    "without usable values for the selected response:\n\n"
+                    + "\n".join(f"• {label}" for label in labels),
+                )
         except Exception as error:
             QMessageBox.warning(self, "Digital twin unavailable", str(error))
         finally:
@@ -373,10 +441,16 @@ class DigitalTwinPage(QWidget):
         self.coverage_pill.set_value(f"{metrics['coverage_percent']:.1f}%", coverage_tone)
         self.width_pill.set_value(f"{metrics['mean_interval_width']:.4f}")
         self.records_pill.set_value(result.observations)
-        self.calibration_label.setText(
+        message = (
             f"{result.cv_method} · {result.confidence_percent:.0f}% intervals · "
             f"{result.excluded_records} rows omitted."
         )
+        if result.omitted_predictors:
+            message += " Excluded parameters: " + ", ".join(
+                COLUMN_LABELS.get(field, field)
+                for field in result.omitted_predictors
+            ) + "."
+        self.calibration_label.setText(message)
         self.calibration_model.set_dataframe(result.calibration)
         self.calibration_figures = self.service.calibration_figures(result)
         self.calibration_figure_tabs.set_figures(self.calibration_figures)
@@ -669,14 +743,7 @@ class DigitalTwinPage(QWidget):
         if figure is None:
             QMessageBox.information(self, "Nothing to export", "Generate the figure first.")
             return
-        EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export figure", str(EXPORT_DIR / name),
-            "PNG image (*.png);;PDF document (*.pdf);;SVG image (*.svg);;TIFF image (*.tiff)"
+        open_figure_export_dialog(
+            self, figure, suggested_name=str(EXPORT_DIR / name)
         )
-        if path:
-            destination = Path(path)
-            if not destination.suffix:
-                destination = destination.with_suffix(".png")
-            save_square_figure(figure, destination)
-            self.context.message.emit(f"Figure exported to {destination.name}.")
+

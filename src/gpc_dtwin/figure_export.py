@@ -11,6 +11,7 @@ from gpc_dtwin.chart_style import ChartStyle, apply_chart_style, style_for_figur
 
 
 EXPORT_DPI = 600
+EXPORT_DPI_OPTIONS = (150, 300, 600, 1200, 2400)
 EXPORT_SIZE_INCHES = 6.0
 SUPPORTED_FIGURE_SUFFIXES = {".png", ".pdf", ".svg", ".tif", ".tiff"}
 
@@ -25,8 +26,13 @@ class ExportProfile:
         return int(round(self.size_inches * self.dpi))
 
 
-def export_profile() -> ExportProfile:
-    return ExportProfile()
+def export_profile(dpi: int = EXPORT_DPI) -> ExportProfile:
+    dpi = int(dpi)
+    if dpi not in EXPORT_DPI_OPTIONS:
+        raise ValueError(
+            "Unsupported export quality. Choose 150, 300, 600, 1200, or 2400 dpi."
+        )
+    return ExportProfile(dpi=dpi)
 
 
 def analyze_export_layout(figure: Figure) -> list[str]:
@@ -60,8 +66,11 @@ def save_square_figure(
     suffix = destination.suffix.lower()
     if suffix not in SUPPORTED_FIGURE_SUFFIXES:
         raise ValueError("Unsupported figure format. Use PNG, PDF, SVG, TIFF, or TIF.")
-    if dpi != EXPORT_DPI:
-        raise ValueError(f"Figure export is fixed at {EXPORT_DPI} dpi.")
+    dpi = int(dpi)
+    if dpi not in EXPORT_DPI_OPTIONS:
+        raise ValueError(
+            "Unsupported export quality. Choose 150, 300, 600, 1200, or 2400 dpi."
+        )
     if size_inches <= 0:
         raise ValueError("Figure size must be positive.")
 
@@ -71,10 +80,10 @@ def save_square_figure(
     original_dpi = float(figure.dpi)
     try:
         figure.set_size_inches(size_inches, size_inches, forward=False)
-        figure.set_dpi(EXPORT_DPI)
+        figure.set_dpi(dpi)
         figure.savefig(
             destination,
-            dpi=EXPORT_DPI,
+            dpi=dpi,
             bbox_inches=None,
             pad_inches=0.0,
             facecolor=figure.get_facecolor(),
