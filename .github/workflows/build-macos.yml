@@ -120,3 +120,4 @@ jobs:
             release/GPC-DTwin-v1.1.5-macOS-arm64.dmg
             release/GPC-DTwin-v1.1.5-macOS-arm64.sha256.txt
           if-no-files-found: error
+          compression-level: 0
