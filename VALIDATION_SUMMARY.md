@@ -1,8 +1,8 @@
-# GPC-DTwin v1.2.0 Validation Summary
+# GPC-DTwin v1.2.2 Validation Summary
 
 ## Scope
 
-Version 1.2.0 integrates predictive ranking, Digital Twin selection, 3D response visualization, and physics-informed specimen calculations while retaining the existing data, analytics, NDT, durability, optimization, active-learning, reporting, and publication-graphics workspaces.
+Version 1.2.2 integrates predictive ranking, Digital Twin selection, 3D response visualization, and physics-informed specimen calculations while retaining the existing data, analytics, NDT, durability, optimization, active-learning, reporting, and publication-graphics workspaces.
 
 ## Core architecture checks
 
@@ -56,3 +56,27 @@ The GitHub Actions workflow now:
 ## Release test baseline
 
 Service tests cover predictive modelling, Digital Twin, 3D/physics, Active Learning, NDT/durability, optimization/inverse design, reporting, storage, analytics, statistics, export, and release-source regressions. GUI-marked tests remain available for environments with a suitable Qt display/offscreen configuration.
+
+## Version 1.2.1 visual-consistency validation
+
+- Response-dependent figure labels inherit canonical engineering units.
+- Digital Twin response maps retain fitted-twin colour scales across axis changes.
+- Physics-Informed Specimen colour scales are locked across compatible mixes for the same field.
+- Natural fixed scales are used for utilisation, damage, acid-penetration, and strength-retention fields.
+- Predictive Models exposes separate Comparison table and Ranking chart tabs.
+- Digital Twin Build and calibrate exposes separate Calibration table and Response charts tabs.
+- Dedicated v1.2.1 visual-consistency tests were added and pass in the source test environment.
+
+
+## Version 1.2.2 workflow validation
+
+- Feature influence table and chart are separate peer result tabs.
+- Digital Twin inherits the exact active Predictive Models response, usable predictors, and review-record policy, eliminating default-setting mismatch.
+- Digital Twin navigation remains disabled until a validated Prediction comparison exists.
+- Digital Twin Prediction and Response maps tabs remain disabled until an active twin exists.
+- 3D Explorer navigation remains disabled until an active twin exists.
+- Predictive Models point-prediction tab remains disabled until an active fitted model exists.
+- Publishing a new Predictive Models ranking invalidates the previous active twin, preventing stale downstream visualisation.
+- Dataset or verification-state invalidation automatically returns the UI to the nearest valid upstream workflow stage.
+
+Focused v1.2.2 source/service validation: **32/32 tests passed** across modelling, Digital Twin, 3D/physics, visual-consistency, and workflow-gating suites. All source/test Python files were also syntax-compiled successfully. GUI-marked Qt tests remain intended for the packaged Windows/macOS or a PyQt6-enabled test environment.

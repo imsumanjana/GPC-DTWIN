@@ -22,7 +22,7 @@ from sklearn.pipeline import Pipeline
 
 from gpc_dtwin import __version__
 from gpc_dtwin.chart_style import apply_chart_style
-from gpc_dtwin.columns import COLUMN_LABELS, MODEL_NUMERIC_PREDICTORS
+from gpc_dtwin.columns import COLUMN_LABELS, MODEL_NUMERIC_PREDICTORS, quantity_label
 from gpc_dtwin.services.model_registry import (
     MODEL_FACTORIES, algorithm_names, build_pipeline, build_preprocessor,
 )
@@ -506,7 +506,7 @@ class ModelingService:
         axis.barh(positions - width / 2, table["rmse"], height=width, label="RMSE")
         axis.barh(positions + width / 2, table["mae"], height=width, label="MAE")
         axis.set_yticks(positions, table["algorithm"])
-        axis.set_xlabel(COLUMN_LABELS.get(result.response, result.response))
+        axis.set_xlabel(quantity_label("Prediction error", result.response))
         axis.grid(True, axis="x", alpha=0.25)
         axis.legend()
         return figure
@@ -530,16 +530,16 @@ class ModelingService:
         maximum = max(float(observed.max()), float(predicted.max()))
         fit_axis.plot([minimum, maximum], [minimum, maximum], linestyle="--", linewidth=1,
                       label="Ideal agreement")
-        fit_axis.set_xlabel("Observed")
-        fit_axis.set_ylabel("Cross-validated prediction")
+        fit_axis.set_xlabel(quantity_label("Observed", result.response))
+        fit_axis.set_ylabel(quantity_label("Cross-validated prediction", result.response))
         fit_axis.set_title(algorithm)
 
         residual_figure = Figure(figsize=(6.6, 5.8), constrained_layout=True)
         residual_axis = residual_figure.add_subplot(111)
         residual_axis.scatter(predicted, residual, label="Residuals")
         residual_axis.axhline(0, linestyle="--", linewidth=1, label="Zero residual")
-        residual_axis.set_xlabel("Cross-validated prediction")
-        residual_axis.set_ylabel("Residual")
+        residual_axis.set_xlabel(quantity_label("Cross-validated prediction", result.response))
+        residual_axis.set_ylabel(quantity_label("Residual", result.response))
         residual_axis.set_title("Residual pattern")
 
         figures = {"Observed vs predicted": fit_figure, "Residuals": residual_figure}
@@ -564,11 +564,11 @@ class ModelingService:
         maximum = max(float(observed.max()), float(predicted.max()))
         fit_axis.plot([minimum, maximum], [minimum, maximum], linestyle="--", linewidth=1,
                       label="Ideal agreement")
-        fit_axis.set_xlabel("Observed"); fit_axis.set_ylabel("Cross-validated prediction")
+        fit_axis.set_xlabel(quantity_label("Observed", result.response)); fit_axis.set_ylabel(quantity_label("Cross-validated prediction", result.response))
         fit_axis.set_title(algorithm)
         residual_axis.scatter(predicted, residual, label="Residuals")
         residual_axis.axhline(0, linestyle="--", linewidth=1, label="Zero residual")
-        residual_axis.set_xlabel("Cross-validated prediction"); residual_axis.set_ylabel("Residual")
+        residual_axis.set_xlabel(quantity_label("Cross-validated prediction", result.response)); residual_axis.set_ylabel(quantity_label("Residual", result.response))
         residual_axis.set_title("Residual pattern")
         apply_chart_style(figure)
         return figure
@@ -583,7 +583,7 @@ class ModelingService:
             axis.set_axis_off()
             return figure
         axis.barh(table["predictor_label"], table["importance_mean"], xerr=table["importance_std"])
-        axis.set_xlabel("Permutation importance (RMSE increase)")
+        axis.set_xlabel(quantity_label("Permutation importance (RMSE increase)", result.response))
         axis.grid(True, axis="x", alpha=0.25)
         return figure
 
@@ -634,6 +634,75 @@ class ModelingService:
         predictors = list(artifact["metadata"]["predictors"])
         frame = pd.DataFrame([{column: values.get(column) for column in predictors}])
         return float(artifact["pipeline"].predict(frame)[0])
+
+    @staticmethod
+    def comparison_from_artifact(artifact: dict[str, Any]) -> ModelComparisonResult | None:
+        """Reconstruct the validated ranking stored with a saved best-model artifact.
+
+        Saved v1.2+ model metadata contains the complete seven-model ranking.  This
+        compact reconstruction is sufficient for the downstream Digital Twin hand-off
+        after a saved model is reloaded in a later application session.
+        """
+        ModelingService._validate_artifact(artifact)
+        metadata = artifact["metadata"]
+        records = metadata.get("ranking", [])
+        if not isinstance(records, list) or not records:
+            return None
+        rankings = pd.DataFrame(records)
+        required = {"rank", "algorithm", "rmse", "mae", "r2"}
+        if rankings.empty or not required.issubset(rankings.columns):
+            return None
+        rankings = rankings.sort_values("rank").reset_index(drop=True)
+        best_algorithm = str(metadata.get("algorithm", rankings.iloc[0]["algorithm"]))
+        metrics = metadata.get("metrics", {})
+        best_metrics = {
+            "rmse": float(metrics.get("rmse", np.nan)),
+            "mae": float(metrics.get("mae", np.nan)),
+            "r2": float(metrics.get("r2", np.nan)),
+            "mape_percent": float(metrics.get("mape_percent", np.nan)),
+        }
+        return ModelComparisonResult(
+            response=str(metadata["response"]),
+            predictors=tuple(str(value) for value in metadata.get("predictors", [])),
+            omitted_predictors=tuple(str(value) for value in metadata.get("omitted_predictors", [])),
+            observations=int(metadata.get("observations", 0)),
+            excluded_records=int(metadata.get("excluded_records", 0)),
+            cv_method=str(metadata.get("cv_method", "Saved validated comparison")),
+            rankings=rankings,
+            predictions=pd.DataFrame(),
+            best_algorithm=best_algorithm,
+            best_metrics=best_metrics,
+            feature_influence=pd.DataFrame(),
+            artifact=artifact,
+        )
+
+    @staticmethod
+    def artifact_matches_dataframe(artifact: dict[str, Any], dataframe: pd.DataFrame) -> bool:
+        """Check whether a saved ranking was fitted to the current active data/configuration."""
+        ModelingService._validate_artifact(artifact)
+        metadata = artifact["metadata"]
+        expected = str(metadata.get("data_fingerprint_sha256", ""))
+        if not expected:
+            return False
+        response = str(metadata["response"])
+        predictors = [str(value) for value in metadata.get("predictors", [])]
+        try:
+            working, _, usable, _ = ModelingService._prepare_working_data(
+                dataframe,
+                response,
+                predictors,
+                bool(metadata.get("include_review_records", False)),
+                str(metadata.get("group_column", "mix_id")),
+            )
+        except Exception:
+            return False
+        if set(usable) != set(predictors):
+            return False
+        fingerprint_frame = working[[response, *usable]].copy()
+        actual = hashlib.sha256(
+            pd.util.hash_pandas_object(fingerprint_frame, index=True).values.tobytes()
+        ).hexdigest()
+        return actual == expected
 
     @staticmethod
     def _validate_artifact(artifact: dict[str, Any]) -> None:

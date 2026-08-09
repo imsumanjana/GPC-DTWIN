@@ -4,11 +4,11 @@ VSVersionInfo(
   kids=[StringFileInfo([StringTable('040904B0', [
     StringStruct('CompanyName', 'Dr. Suman Jana'),
     StringStruct('FileDescription', 'GPC-DTwin Materials Analytics'),
-    StringStruct('FileVersion', '1.2.0'),
+    StringStruct('FileVersion', '1.2.1'),
     StringStruct('InternalName', 'GPC-DTwin'),
     StringStruct('LegalCopyright', 'Copyright © 2026 Dr. Suman Jana. All rights reserved.'),
     StringStruct('OriginalFilename', 'GPC-DTwin.exe'),
     StringStruct('ProductName', 'GPC-DTwin'),
-    StringStruct('ProductVersion', '1.2.0')])]),
+    StringStruct('ProductVersion', '1.2.1')])]),
   VarFileInfo([VarStruct('Translation', [1033, 1200])])]
 )

@@ -51,8 +51,19 @@ class ApplicationContext(QObject):
             self.active_twin_changed.emit()
 
     def set_model_comparison(self, result) -> None:
+        """Publish a new validated ranking and invalidate any downstream twin.
+
+        A Digital Twin is calibrated against one exact Prediction configuration.
+        Replacing that upstream comparison therefore makes the previous active twin
+        stale and immediately re-locks downstream 3D/twin-dependent options until
+        the new configuration is calibrated.
+        """
+        had_twin = self.active_twin_artifact is not None
         self.model_comparison = result
+        self.active_twin_artifact = None
         self.model_comparison_changed.emit()
+        if had_twin:
+            self.active_twin_changed.emit()
 
     def set_active_twin(self, artifact: dict | None) -> None:
         self.active_twin_artifact = artifact

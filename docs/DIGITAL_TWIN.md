@@ -76,3 +76,12 @@ When a twin is built or loaded, it is published as the **active twin artifact**.
 ## Saved twins
 
 Saved twin files use Joblib with matching JSON metadata. New-format metadata records the selected prediction algorithm, prediction rank/status, empirical uncertainty method, training-domain information, and validation metrics. Legacy Gaussian Process / Forest Ensemble artifacts can still be loaded for backward compatibility, but new twins are created from the shared seven-model architecture.
+
+## Calibration result tabs and fixed map scales (v1.2.1)
+
+The Build and calibrate workspace presents the calibration table and response charts as peer tabs rather than a compressed side-by-side splitter. Response-map colour limits are stored with the fitted twin, providing consistent colour meaning across alternative response-map axis selections.
+
+
+## Validated upstream prerequisite (v1.2.2)
+
+Digital Twin is a downstream workflow and is enabled only after Predictive Models has completed a validated model comparison. On entry, the response, usable predictor set, and review-record policy are inherited directly from that comparison and displayed read-only. Changing these modelling inputs therefore requires returning to Predictive Models and validating the new configuration. The **Prediction** and **Response maps** tabs are enabled only after a twin has been built or loaded.

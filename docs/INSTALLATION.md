@@ -33,7 +33,7 @@ first compatible launch.
 
 ## Native access-violation diagnostics
 
-Windows exit code `-1073741819` corresponds to a native access violation. Version 1.2.0 retains the native-stability safeguards that reduce this
+Windows exit code `-1073741819` corresponds to a native access violation. Version 1.2.2 retains the native-stability safeguards that reduce this
 risk by using matching Qt components, software rendering, timer-based chart discovery, stable canvas
 reuse, and orderly chart-helper shutdown. When the code is encountered, `run.ps1` points to the native
 crash log and recommends `scripts/release_check.ps1`.

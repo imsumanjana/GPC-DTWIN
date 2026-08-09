@@ -73,3 +73,12 @@ Each saved point-prediction model includes:
 - record count, validation method, dataset fingerprint, and current ranking.
 
 Model predictions should be interpreted within the range and quality of the observations used to fit the model.
+
+## Comparison result tabs and units (v1.2.1)
+
+The model-comparison table and ranking chart are peer result tabs. Model diagnostic axes, residuals, prediction errors, and permutation-RMSE increases inherit the selected response unit so exported figures remain self-describing.
+
+
+## Workflow hand-off (v1.2.2)
+
+After a successful comparison, the validated response, usable predictor set, review-record policy, seven-model ranking, and ranking leader are published to the shared application context. The Digital Twin consumes this exact configuration; the user does not need to reproduce predictor check boxes manually. The Predictive Models **Prediction** tab is enabled only when an active fitted model exists. Feature influence is presented in separate **Feature influence table** and **Feature influence chart** tabs.

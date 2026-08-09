@@ -72,6 +72,9 @@ class SpecimenPhysicsResult:
     field: pd.DataFrame
     summary: dict[str, float]
     assumptions: tuple[str, ...]
+    color_min: float | None = None
+    color_max: float | None = None
+    color_scale_basis: str = ""
 
 
 class PhysicsSpatialService:
@@ -86,6 +89,94 @@ class PhysicsSpatialService:
         if analysis not in FIELD_OPTIONS:
             raise ValueError(f"Unsupported specimen analysis: {analysis}")
         return list(FIELD_OPTIONS[analysis])
+
+    def field_color_limits(
+        self,
+        dataframe: pd.DataFrame,
+        analysis: str,
+        field_type: str,
+        *,
+        acid_type: str = "H2SO4",
+        twin_artifact: dict[str, Any] | None = None,
+    ) -> tuple[float, float, str]:
+        """Return one comparison scale for every mix shown with the same physical field.
+
+        Natural dimensionless fields use fixed physical bounds. Stress/capacity fields use the
+        largest compatible bulk capacity in the active dataset and therefore do not rescale when
+        the user switches M1, M2, ... . The load-dependent stress scales cover the complete
+        supported load-control range (0–150%).
+        """
+        fixed = {
+            "Stress utilisation": (0.0, 1.5, "Fixed utilisation range 0–1.5"),
+            "Capacity margin": (-0.5, 1.0, "Fixed capacity-margin range −0.5–1.0"),
+            "Nominal tensile utilisation": (0.0, 1.5, "Fixed utilisation range 0–1.5"),
+            "Tensile utilisation": (0.0, 1.5, "Fixed utilisation range 0–1.5"),
+            "Compressive utilisation": (0.0, 1.5, "Fixed utilisation range 0–1.5"),
+            "Failure index": (0.0, 1.5, "Fixed failure-index range 0–1.5"),
+            "Acid penetration": (0.0, 100.0, "Fixed physical percentage range 0–100%"),
+            "Damage index": (0.0, 1.0, "Fixed damage-index range 0–1"),
+            "Strength retention": (0.0, 100.0, "Fixed physical percentage range 0–100%"),
+        }
+        if field_type in fixed:
+            return fixed[field_type]
+
+        response = RESPONSE_FOR_ANALYSIS.get(analysis)
+        if response is None:
+            return 0.0, 1.0, "Fallback scale"
+        if "mix_id" not in dataframe.columns:
+            return 0.0, 1.0, "Fallback scale"
+
+        mix_ids = dataframe["mix_id"].dropna().astype(str).drop_duplicates().tolist()
+        if analysis == "Acid degradation cube":
+            acid_norm = str(acid_type).strip().lower()
+            acid_label = "H2SO4" if "so4" in acid_norm else "HCl"
+            acid_series = dataframe.get("acid_type", pd.Series(index=dataframe.index, dtype="string"))
+            initial = pd.to_numeric(
+                dataframe.get("initial_compressive_strength_mpa", pd.Series(index=dataframe.index)),
+                errors="coerce",
+            )
+            residual = pd.to_numeric(
+                dataframe.get("residual_compressive_strength_mpa", pd.Series(index=dataframe.index)),
+                errors="coerce",
+            )
+            mask = (
+                acid_series.astype("string").str.lower().eq(acid_label.lower())
+                & initial.notna() & residual.notna()
+            )
+            mix_ids = dataframe.loc[mask, "mix_id"].dropna().astype(str).drop_duplicates().tolist()
+
+        capacities: list[float] = []
+        for mix_id in mix_ids:
+            try:
+                value, _source, _records = self._capacity(
+                    dataframe, mix_id, response, twin_artifact
+                )
+            except Exception:
+                continue
+            if np.isfinite(value):
+                capacities.append(float(value))
+        if not capacities:
+            return 0.0, 1.0, "Fallback scale; no comparable capacity values"
+        maximum_capacity = max(max(capacities), 1e-9)
+        mix_count = len(capacities)
+
+        if field_type in {"Applied stress", "Nominal tensile stress"}:
+            return (
+                0.0, 1.5 * maximum_capacity,
+                f"Locked across {mix_count} compatible mixes using 150% of the largest bulk capacity",
+            )
+        if field_type == "Bending stress":
+            limit = 1.5 * maximum_capacity
+            return (
+                -limit, limit,
+                f"Symmetric scale locked across {mix_count} compatible mixes using ±150% of the largest flexural capacity",
+            )
+        if field_type == "Residual strength":
+            return (
+                0.0, maximum_capacity,
+                f"Locked across {mix_count} acid-compatible mixes using the largest bulk compressive capacity",
+            )
+        return 0.0, maximum_capacity, f"Locked across {mix_count} compatible mixes"
 
     @staticmethod
     def _mix_rows(dataframe: pd.DataFrame, mix_id: str) -> pd.DataFrame:
@@ -230,10 +321,10 @@ class PhysicsSpatialService:
             label = "Nominal compressive stress (MPa)"
         elif field_type == "Stress utilisation":
             value = utilisation
-            label = "Compressive stress utilisation"
+            label = "Compressive stress utilisation (–)"
         else:
             value = 1.0 - utilisation
-            label = "Capacity margin"
+            label = "Capacity margin (–)"
         field = pd.DataFrame({
             "x_mm": x.ravel(), "y_mm": y.ravel(), "z_mm": z.ravel(),
             "field_value": value.ravel(),
@@ -278,7 +369,7 @@ class PhysicsSpatialService:
             label = "Nominal splitting tensile stress (MPa)"
         else:
             value = utilisation
-            label = "Nominal splitting tensile utilisation"
+            label = "Nominal splitting tensile utilisation (–)"
         field = pd.DataFrame({
             "x_mm": (x + radius).ravel(), "y_mm": (y + radius).ravel(), "z_mm": z.ravel(),
             "field_value": value.ravel(),
@@ -340,13 +431,13 @@ class PhysicsSpatialService:
             label = "Longitudinal bending stress (MPa)"
         elif field_type == "Tensile utilisation":
             value = tensile_util
-            label = "Tensile flexural utilisation"
+            label = "Tensile flexural utilisation (–)"
         elif field_type == "Compressive utilisation":
             value = compressive_util
-            label = "Compressive flexural utilisation"
+            label = "Compressive flexural utilisation (–)"
         else:
             value = failure_index
-            label = "Flexural failure index"
+            label = "Flexural failure index (–)"
         field = pd.DataFrame({
             "x_mm": x.ravel(),
             "y_mm": (y + width / 2.0).ravel(),
@@ -464,7 +555,7 @@ class PhysicsSpatialService:
             label = f"Modelled {acid_label} penetration indicator (%)"
         elif field_type == "Damage index":
             value = damage
-            label = "Chemically induced damage index"
+            label = "Chemically induced damage index (–)"
         elif field_type == "Residual strength":
             value = local_residual
             label = "Modelled local residual compressive capacity (MPa)"

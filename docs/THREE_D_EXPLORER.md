@@ -93,3 +93,9 @@ Bulk capacity can come from the active Digital Twin when its response matches th
 Typical provenance labels include **Theory calculated**, **Theory + Digital Twin**, and **Diffusion theory + experimentally calibrated global strength loss**.
 
 No internal CT, voxel, crack, or spatial NDT measurement is claimed unless such coordinate-resolved measurements are actually imported in a future workflow.
+
+## Comparison-safe colour scales (v1.2.1)
+
+The 3D Response Surface reads fixed colour limits from the active Digital Twin. Estimated response, relative uncertainty, and interval-width colours therefore retain the same numerical meaning when the X/Y axes are changed.
+
+Physics-Informed Specimen fields no longer normalize each mix independently. Stress/capacity fields use a scale derived from all compatible mixes in the active dataset; utilisation, damage, penetration, and retention fields use fixed physical bounds. The selected colour limits and their basis are also written into exported specimen-field CSV data.

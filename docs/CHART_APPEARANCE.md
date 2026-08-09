@@ -89,3 +89,7 @@ The Export tab in the appearance dialog opens a square export preview. It report
 - 3600 × 3600 pixels for PNG and TIFF;
 - common clipping risks, including outside legends, custom legend anchors, long titles, many axes, and
   strong tick rotation.
+
+## Engineering units and colour normalization (v1.2.1)
+
+Physical chart axes and colour bars use canonical engineering units from the data schema. Response-derived quantities inherit the selected response unit. Dimensionless quantities are marked with an en dash where useful. Fixed colour normalization is preserved by analytical views that are intended for direct comparison.

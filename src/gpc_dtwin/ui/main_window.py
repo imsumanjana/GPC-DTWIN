@@ -128,10 +128,17 @@ class MainWindow(QMainWindow):
         self._build_statusbar()
         self.context.message.connect(self.show_message)
         self.context.data_changed.connect(self.update_dataset_label)
+        self.context.data_changed.connect(self._update_workflow_access)
+        self.context.model_comparison_changed.connect(self._update_workflow_access)
+        self.context.active_twin_changed.connect(self._update_workflow_access)
         self.update_dataset_label()
         self.apply_theme(str(self.settings.value("theme", "Dark")).lower())
         self._restore_layout()
-        self.navigate(self._restored_page_index())
+        self._update_workflow_access()
+        restored = self._restored_page_index()
+        if not self._page_is_available(restored)[0]:
+            restored = 0
+        self.navigate(restored)
 
     def _build_sidebar(self) -> QFrame:
         sidebar = QFrame()
@@ -293,12 +300,15 @@ class MainWindow(QMainWindow):
         data_menu.addAction(self._action("Reload database", self.refresh_project, "F5"))
 
         analysis_menu = self.menuBar().addMenu("Analysis")
+        self.analysis_actions: dict[int, QAction] = {}
         for label, index in [
             ("Predictive models", 2), ("Digital twin", 3), ("3D explorer", 4),
             ("NDT and durability", 5), ("Optimization", 6),
             ("Active learning", 7), ("Reports and provenance", 8),
         ]:
-            analysis_menu.addAction(self._action(label, lambda checked=False, i=index: self.navigate(i)))
+            action = self._action(label, lambda checked=False, i=index: self.navigate(i))
+            analysis_menu.addAction(action)
+            self.analysis_actions[index] = action
 
         view_menu = self.menuBar().addMenu("View")
         view_menu.addAction(self._action("Toggle navigation", self.toggle_sidebar, "Ctrl+Shift+N"))
@@ -349,8 +359,41 @@ class MainWindow(QMainWindow):
         if isinstance(data_workspace, DataWorkspacePage):
             data_workspace.set_current_tab(tab_index)
 
+    def _page_is_available(self, index: int) -> tuple[bool, str]:
+        """Return workflow availability and a user-facing prerequisite message."""
+        if index == 3 and self.context.model_comparison is None:
+            return False, "Digital Twin is locked until a validated Predictive Models comparison is completed."
+        if index == 4 and self.context.active_twin_artifact is None:
+            return False, "3D Explorer is locked until a Digital Twin has been built or loaded."
+        return True, ""
+
+    def _update_workflow_access(self, *_args) -> None:
+        if not hasattr(self, "nav_buttons"):
+            return
+        for index, button in enumerate(self.nav_buttons):
+            available, reason = self._page_is_available(index)
+            button.setEnabled(available)
+            button.setToolTip(button.label if available else f"{button.label} — Locked: {reason}")
+            action = getattr(self, "analysis_actions", {}).get(index)
+            if action is not None:
+                action.setEnabled(available)
+                action.setToolTip("" if available else reason)
+
+        # If upstream data/model state is invalidated while a downstream page is
+        # open, move back to the nearest valid workflow stage immediately.
+        if hasattr(self, "stack"):
+            current = self.stack.currentIndex()
+            if current == 4 and self.context.active_twin_artifact is None:
+                self.navigate(3 if self.context.model_comparison is not None else 2)
+            elif current == 3 and self.context.model_comparison is None:
+                self.navigate(2)
+
     def navigate(self, index: int) -> None:
         index = max(0, min(index, self.stack.count() - 1))
+        available, reason = self._page_is_available(index)
+        if not available:
+            self.show_message(reason)
+            return
         self.stack.setCurrentIndex(index)
         for button_index, button in enumerate(self.nav_buttons):
             button.setChecked(button_index == index)

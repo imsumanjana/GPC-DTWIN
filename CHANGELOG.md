@@ -1,5 +1,24 @@
 # Change Log
 
+## Version 1.2.2
+
+- Split Predictive Models feature influence into dedicated table and chart tabs.
+- Made Digital Twin automatically inherit the latest validated Predictive Models response, usable predictor set, and review-record policy.
+- Removed false “No matching validated ranking” states caused by Digital Twin defaults differing from the validated Prediction configuration.
+- Added workflow gating: Digital Twin unlocks only after a validated model comparison, and 3D Explorer unlocks only after an active Digital Twin exists.
+- Added internal tab gating so Predictive Models point prediction requires an active fitted model, while Digital Twin Prediction/Response Maps require an active twin.
+- Added automatic fallback to the nearest valid upstream workspace if dataset changes invalidate downstream model/twin state.
+
+## Version 1.2.1
+
+- Added canonical engineering units to response-dependent chart axes, residual/uncertainty plots, 3D response fields, and dimensionless chart labels where applicable.
+- Locked Digital Twin response-map colour scales to the fitted twin so colour meaning no longer changes when response-map axes are changed.
+- Locked physics-informed specimen colour scales across compatible mixes; M1, M2, and other mixes now share one field scale for direct visual comparison.
+- Added fixed physical scales for utilisation, damage, acid-penetration, strength-retention, and related dimensionless/percentage fields.
+- Strength-retention durability heatmaps now use 0–100%, while mass-change heatmaps use a symmetric dataset-wide scale around zero.
+- Moved the Predictive Models comparison table and ranking chart into peer result tabs.
+- Moved the Digital Twin calibration table and calibration response charts into peer result tabs.
+
 ## Version 1.2.0
 
 - Centralized all seven regression algorithms in a shared model registry.

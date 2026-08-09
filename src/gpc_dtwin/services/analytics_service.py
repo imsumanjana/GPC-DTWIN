@@ -195,7 +195,7 @@ class AnalyticsService:
         subset = subset.sort_values("aas_b_ratio")
         figure, axis = self._figure()
         axis.plot(subset["aas_b_ratio"], subset["slump_mm"], marker="o")
-        axis.set_xlabel("AAS:B ratio")
+        axis.set_xlabel("AAS:B ratio (–)")
         axis.set_ylabel("Slump (mm)")
         axis.set_title(str(mix_id))
         axis.grid(True, alpha=0.25)
@@ -305,7 +305,7 @@ class AnalyticsService:
             "Compressive", "Split tensile", "Flexural", "UPV", "Rebound"
         ], rotation=25, ha="right")
         axis.set_yticks(range(len(normalised.index)), normalised.index)
-        axis.set_xlabel("Property (min–max normalised)")
+        axis.set_xlabel("Property (min–max normalised, –)")
         axis.set_ylabel("Mix")
-        figure.colorbar(image, ax=axis, label="Normalised performance")
+        figure.colorbar(image, ax=axis, label="Normalised performance (–)")
         return figure

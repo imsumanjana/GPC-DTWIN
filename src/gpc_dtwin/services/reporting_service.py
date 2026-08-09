@@ -229,7 +229,7 @@ class ReportingService:
         axis.barh(range(len(counts)), counts.values)
         axis.set_yticks(range(len(counts)), counts.index)
         axis.invert_yaxis()
-        axis.set_xlabel("Records")
+        axis.set_xlabel("Records (count)")
         axis.set_title("Data-status distribution")
         axis.grid(True, axis="x", alpha=0.25)
         return figure
@@ -248,7 +248,7 @@ class ReportingService:
         figure, axis = cls._new_figure()
         axis.barh(range(len(coverage)), coverage.values)
         axis.set_yticks(range(len(coverage)), coverage.index)
-        axis.set_xlabel("Usable records")
+        axis.set_xlabel("Usable records (count)")
         axis.set_title("Measured-property coverage")
         axis.grid(True, axis="x", alpha=0.25)
         return figure
@@ -261,7 +261,7 @@ class ReportingService:
         counts = audit_issues["severity"].value_counts().reindex(order, fill_value=0)
         figure, axis = cls._new_figure()
         axis.bar(counts.index, counts.values)
-        axis.set_ylabel("Findings")
+        axis.set_ylabel("Findings (count)")
         axis.set_title("Quality findings by severity")
         axis.grid(True, axis="y", alpha=0.25)
         return figure

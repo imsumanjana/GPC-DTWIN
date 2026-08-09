@@ -17,7 +17,7 @@ from sklearn.model_selection import GroupKFold, KFold, cross_val_predict
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, PolynomialFeatures, StandardScaler
 
-from gpc_dtwin.columns import ANALYSIS_FACTOR_COLUMNS, ANALYSIS_NUMERIC_COLUMNS, COLUMN_LABELS
+from gpc_dtwin.columns import ANALYSIS_FACTOR_COLUMNS, ANALYSIS_NUMERIC_COLUMNS, COLUMN_LABELS, quantity_label
 from gpc_dtwin.field_compatibility import assess_usable_fields, clean_selected_frame
 
 
@@ -105,7 +105,7 @@ class StatisticsService:
                 value = correlation.iat[row, column]
                 if not pd.isna(value):
                     axis.text(column, row, f"{value:.2f}", ha="center", va="center", fontsize=7)
-        figure.colorbar(image, ax=axis, label="Correlation")
+        figure.colorbar(image, ax=axis, label="Correlation (–)")
         return figure
 
     @staticmethod
@@ -317,8 +317,8 @@ class StatisticsService:
         minimum = min(float(observed.min()), float(predicted.min()))
         maximum = max(float(observed.max()), float(predicted.max()))
         axis.plot([minimum, maximum], [minimum, maximum], linestyle="--", linewidth=1, label="Ideal agreement")
-        axis.set_xlabel("Observed")
-        axis.set_ylabel("Cross-validated prediction")
+        axis.set_xlabel(quantity_label("Observed", result.response))
+        axis.set_ylabel(quantity_label("Cross-validated prediction", result.response))
         axis.grid(True, alpha=0.25)
         axis.set_title(f"RMSE {result.rmse:.3f} · MAE {result.mae:.3f} · R² {result.r2:.3f}")
         axis.legend()

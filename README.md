@@ -1,4 +1,4 @@
-# GPC-DTwin v1.2.0
+# GPC-DTwin v1.2.2
 
 GPC-DTwin is a release-ready desktop platform for structured geopolymer-concrete data management,
 quality checking, visual analytics, statistical analysis, predictive modelling, uncertainty-aware
@@ -42,7 +42,7 @@ Every manual figure export opens a square-export preview and quality selector. A
 
 ## Publication graphics system
 
-Version 1.2.0 retains the application-wide, icon-driven chart presentation system:
+Version 1.2.1 retains the application-wide, icon-driven chart presentation system:
 
 - one compact palette icon on every Matplotlib chart;
 - Times New Roman as the default chart typeface;
@@ -79,9 +79,15 @@ See `docs/CHART_APPEARANCE.md` and `docs/PUBLICATION_GRAPHICS.md`.
 - No rule is drawn above tab rows; a single low-contrast baseline remains below each tab row.
 
 
+## Units, fixed colour scales, and comparison tabs
+
+Version 1.2.1 makes visual comparisons explicit and reproducible. Engineering units are carried into chart axes and colour bars wherever a physical quantity is shown. Digital Twin response maps retain a fixed colour normalization from the fitted twin, while Physics-Informed Specimen fields use a shared scale across compatible mixes rather than independently rescaling M1, M2, and subsequent specimens. Fixed natural bounds are used for percentage and dimensionless utilisation/damage fields.
+
+The Predictive Models workspace now presents **Comparison table** and **Ranking chart** as peer result tabs. Digital Twin > Build and calibrate similarly presents **Calibration table** and **Response charts** as peer tabs, keeping large tables and charts full-width and easier to inspect.
+
 ## Integrated Prediction → Digital Twin → 3D workflow
 
-GPC-DTwin 1.2.0 uses one shared registry of seven regression algorithms. Predictive Models is the
+GPC-DTwin 1.2.1 uses one shared registry of seven regression algorithms. Predictive Models is the
 authoritative benchmarking stage: it evaluates all seven algorithms with the same grouped validation
 splits, records fold variability, creates a dynamic ranking, and publishes that result to the application
 context. The ranking leader is marked **Recommended** for that exact response and predictor setup.

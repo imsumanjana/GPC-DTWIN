@@ -975,7 +975,7 @@ class OptimizationService:
             axis.hist(population[f"{prefix}_estimate"], bins=18, alpha=0.7)
             axis.axvline(pareto.iloc[0][f"{prefix}_estimate"], linestyle="--", linewidth=1.5)
             axis.set_xlabel(COLUMN_LABELS.get(objectives[0].response, objectives[0].response))
-            axis.set_ylabel("Candidate count")
+            axis.set_ylabel("Candidates (count)")
             axis.set_title("Objective distribution")
             axis.grid(True, axis="y", alpha=0.25)
             return figure
@@ -1000,7 +1000,7 @@ class OptimizationService:
                 pareto[first_column], pareto[second_column],
                 c=pareto["compromise_score"], s=60, label="Pareto solutions"
             )
-            figure.colorbar(plot, ax=axis, label="Compromise score")
+            figure.colorbar(plot, ax=axis, label="Compromise score (–)")
             if not pareto.empty:
                 axis.scatter(
                     pareto.iloc[0][first_column], pareto.iloc[0][second_column],
@@ -1020,7 +1020,7 @@ class OptimizationService:
             pareto[first_column], pareto[second_column], pareto[third_column],
             c=pareto["compromise_score"], s=55
         )
-        figure.colorbar(plot, ax=axis, shrink=0.72, label="Compromise score")
+        figure.colorbar(plot, ax=axis, shrink=0.72, label="Compromise score (–)")
         axis.set_xlabel(COLUMN_LABELS.get(first.response, first.response))
         axis.set_ylabel(COLUMN_LABELS.get(second.response, second.response))
         axis.set_zlabel(COLUMN_LABELS.get(third.response, third.response))
@@ -1057,7 +1057,7 @@ class OptimizationService:
         axis.plot(x, best, linewidth=3.0, marker="o", label="Recommended compromise")
         axis.set_xticks(x, labels, rotation=25, ha="right")
         axis.set_ylim(-0.05, 1.05)
-        axis.set_ylabel("Normalized value")
+        axis.set_ylabel("Normalized value (–)")
         axis.set_title("Pareto solution profiles")
         axis.grid(True, alpha=0.25)
         axis.legend(loc="best")
@@ -1075,7 +1075,7 @@ class OptimizationService:
             label="Design loss",
         )
         score_axis.invert_yaxis()
-        score_axis.set_xlabel("Design loss")
+        score_axis.set_xlabel("Design loss (–)")
         score_axis.set_ylabel("Recommendation rank")
         score_axis.set_title("Ranked alternatives")
 
@@ -1102,7 +1102,7 @@ class OptimizationService:
         heat_axis.set_xticks(np.arange(len(table)), table["recommendation_rank"].astype(str))
         heat_axis.set_xlabel("Recommendation rank")
         heat_axis.set_title("Target attainment")
-        heat_figure.colorbar(image, ax=heat_axis, label="Normalized attainment")
+        heat_figure.colorbar(image, ax=heat_axis, label="Normalized attainment (–)")
         figures = {"Ranked alternatives": score_figure, "Target attainment": heat_figure}
         for figure in figures.values():
             apply_chart_style(figure)
@@ -1117,7 +1117,7 @@ class OptimizationService:
         heat_axis = figure.add_subplot(122)
         ranks = table["recommendation_rank"].to_numpy(dtype=int)
         score_axis.barh(ranks.astype(str), table["design_loss"].to_numpy(dtype=float), label="Design loss")
-        score_axis.invert_yaxis(); score_axis.set_xlabel("Design loss")
+        score_axis.invert_yaxis(); score_axis.set_xlabel("Design loss (–)")
         score_axis.set_ylabel("Recommendation rank"); score_axis.set_title("Ranked alternatives")
         ratios: list[np.ndarray] = []
         labels: list[str] = []
@@ -1138,7 +1138,7 @@ class OptimizationService:
         heat_axis.set_yticks(np.arange(len(labels)), labels)
         heat_axis.set_xticks(np.arange(len(table)), table["recommendation_rank"].astype(str))
         heat_axis.set_xlabel("Recommendation rank"); heat_axis.set_title("Target attainment")
-        figure.colorbar(image, ax=heat_axis, label="Normalized attainment")
+        figure.colorbar(image, ax=heat_axis, label="Normalized attainment (–)")
         apply_chart_style(figure)
         return figure
 

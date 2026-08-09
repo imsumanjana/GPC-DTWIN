@@ -11,7 +11,7 @@ import pandas as pd
 from matplotlib.colors import BoundaryNorm
 from matplotlib.figure import Figure
 
-from gpc_dtwin.columns import COLUMN_LABELS
+from gpc_dtwin.columns import COLUMN_LABELS, quantity_label
 from gpc_dtwin.services.digital_twin_service import DigitalTwinService
 from gpc_dtwin.services.physics_spatial_service import (
     PhysicsSpatialService,
@@ -164,11 +164,11 @@ class Visualization3DService:
         }[mode]
 
     @staticmethod
-    def _mode_label(mode: str, response_label: str) -> str:
+    def _mode_label(mode: str, response: str, response_label: str) -> str:
         return {
             "Estimated response": response_label,
             "Relative uncertainty": "Relative uncertainty (%)",
-            "Prediction interval width": "Prediction interval width",
+            "Prediction interval width": quantity_label("Prediction interval width", response),
             "Reliability landscape": "Reliability class",
         }[mode]
 
@@ -214,7 +214,19 @@ class Visualization3DService:
         figure = Figure(figsize=(10.8, 7.2), constrained_layout=True)
         axis = figure.add_subplot(111, projection="3d")
         response_label = COLUMN_LABELS.get(result.response, result.response)
-        value_label = self._mode_label(result.mode, response_label)
+        value_label = self._mode_label(result.mode, result.response, response_label)
+        scale_key = {
+            "Estimated response": "estimated_response",
+            "Relative uncertainty": "relative_uncertainty",
+            "Prediction interval width": "interval_width",
+        }.get(result.mode)
+        if scale_key is not None:
+            value_min, value_max = self.twin_service._fixed_color_limits(
+                surface, scale_key, grid_z,
+                include_zero=result.mode in {"Relative uncertainty", "Prediction interval width"},
+            )
+        else:
+            value_min, value_max = float(np.nanmin(grid_z)), float(np.nanmax(grid_z))
         if result.mode == "Reliability landscape":
             norm = BoundaryNorm([0.5, 1.5, 2.5, 3.5, 4.5], ncolors=256)
             surface_plot = axis.plot_surface(
@@ -223,7 +235,7 @@ class Visualization3DService:
             )
         else:
             surface_plot = axis.plot_surface(
-                grid_x, grid_y, grid_z, cmap=colormap,
+                grid_x, grid_y, grid_z, cmap=colormap, vmin=value_min, vmax=value_max,
                 linewidth=0.15, antialiased=True, alpha=0.95,
             )
         if show_wireframe:
@@ -237,10 +249,18 @@ class Visualization3DService:
             if finite.size:
                 span = max(float(np.ptp(finite)), 1e-9)
                 offset = float(np.nanmin(finite) - 0.12 * span)
+                projection_levels = (
+                    [1, 2, 3, 4]
+                    if result.mode == "Reliability landscape"
+                    else np.linspace(value_min, value_max, 16)
+                )
                 axis.contourf(
                     grid_x, grid_y, grid_z, zdir="z", offset=offset,
-                    levels=16 if result.mode != "Reliability landscape" else [1, 2, 3, 4],
+                    levels=projection_levels,
                     cmap="RdYlGn" if result.mode == "Reliability landscape" else colormap,
+                    vmin=None if result.mode == "Reliability landscape" else value_min,
+                    vmax=None if result.mode == "Reliability landscape" else value_max,
+                    extend="both" if result.mode == "Estimated response" else "max",
                     alpha=0.48,
                 )
                 axis.set_zlim(offset, float(np.nanmax(finite) + 0.04 * span))
@@ -285,7 +305,7 @@ class Visualization3DService:
         effective_diffusivity_mm2_day: float = 1.0,
         twin_artifact: dict[str, Any] | None = None,
     ) -> SpecimenFieldResult:
-        return self.physics_service.build_field(
+        result = self.physics_service.build_field(
             dataframe=dataframe,
             mix_id=mix_id,
             analysis=analysis,
@@ -297,6 +317,18 @@ class Visualization3DService:
             effective_diffusivity_mm2_day=effective_diffusivity_mm2_day,
             twin_artifact=twin_artifact,
         )
+        color_min, color_max, color_basis = self.physics_service.field_color_limits(
+            dataframe, analysis, field_type, acid_type=acid_type, twin_artifact=twin_artifact
+        )
+        result.color_min = float(color_min)
+        result.color_max = float(color_max)
+        result.color_scale_basis = color_basis
+        # Persist the comparison scale with every exported specimen-field row so the
+        # visual normalization can be reproduced outside the application.
+        result.field["color_scale_min"] = result.color_min
+        result.field["color_scale_max"] = result.color_max
+        result.field["color_scale_basis"] = result.color_scale_basis
+        return result
 
     @staticmethod
     def _cutaway_mask(result: SpecimenFieldResult, mode: str) -> np.ndarray:
@@ -333,6 +365,7 @@ class Visualization3DService:
         scatter = axis.scatter(
             shown["x_mm"], shown["y_mm"], shown["z_mm"],
             c=shown["field_value"], cmap=colormap,
+            vmin=result.color_min, vmax=result.color_max,
             s=20 if len(shown) < 2500 else 9, alpha=0.72,
             linewidths=0, depthshade=True,
         )

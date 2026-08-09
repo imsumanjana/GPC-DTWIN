@@ -1,6 +1,6 @@
-IMPLEMENTATION NOTE — GPC-DTwin v1.2.0
+IMPLEMENTATION NOTE — GPC-DTwin v1.2.2
 This document is the original development/research plan and is retained for historical design context.
-The implemented v1.2.0 model architecture supersedes earlier model-specific Digital Twin proposals:
+The implemented v1.2.2 model architecture supersedes earlier model-specific Digital Twin proposals:
 Predictive Modelling benchmarks seven shared regression algorithms, the matching ranking leader is
 recommended by default in Digital Twin, all seven remain selectable, uncertainty is calibrated from
 out-of-fold residual behaviour plus domain support, and 3D Response Surface consumes the active twin

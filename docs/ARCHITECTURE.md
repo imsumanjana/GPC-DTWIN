@@ -62,3 +62,8 @@ The 3D Response Surface consumes `active_twin_artifact` directly and never fits 
 5. Theory-calculated specimen fields are labelled as calculated; aggregate measurements are not presented as spatial scans.
 6. Scientific plots are implemented in service layers and independently testable.
 7. Figure export uses the common square, quality-selectable export engine.
+
+
+### Workflow availability gates (v1.2.2)
+
+The GUI now enforces the principal dependency chain: active data → validated Predictive Models comparison → Digital Twin → 3D Explorer. Downstream navigation and dependent result tabs remain disabled until their upstream artifact exists. Dataset or verification-state changes invalidate model/twin state and automatically return the interface to the nearest valid upstream workspace.

@@ -63,7 +63,7 @@ COLUMN_LABELS = {
     "sf_kg_m3": "Silica fume (kg/m³)", "naoh_kg_m3": "NaOH (kg/m³)",
     "na2sio3_kg_m3": "Na₂SiO₃ (kg/m³)", "naoh_molarity_M": "NaOH molarity (M)",
     "superplasticizer_percent": "Superplasticizer (%)",
-    "activator_ratio_label": "Activator ratio", "aas_b_ratio": "AAS:B ratio",
+    "activator_ratio_label": "Activator ratio", "aas_b_ratio": "AAS:B ratio (–)",
     "curing_regime": "Curing regime", "curing_temperature_C": "Curing temperature (°C)",
     "curing_duration_hours": "Curing duration (h)",
     "mechanical_test_age_days": "Test age (days)", "acid_type": "Exposure medium",
@@ -160,6 +160,47 @@ COLUMN_LABELS = {
     "observations_after": "Records after",
     "records_added": "Records added",
 }
+
+
+# Canonical engineering units used by charts, colour bars, and exported figure labels.
+# A blank string denotes a categorical/dimensionless quantity for which no physical unit applies.
+COLUMN_UNITS = {
+    "fa_percent_numeric": "%", "ggbs_percent_numeric": "%", "sf_percent_numeric": "%",
+    "coarse_aggregate_kg_m3": "kg/m³", "fine_aggregate_kg_m3": "kg/m³",
+    "fly_ash_kg_m3": "kg/m³", "ggbs_kg_m3": "kg/m³", "sf_kg_m3": "kg/m³",
+    "naoh_kg_m3": "kg/m³", "na2sio3_kg_m3": "kg/m³",
+    "naoh_molarity_M": "M", "superplasticizer_percent": "%",
+    "aas_b_ratio": "–", "curing_temperature_C": "°C",
+    "curing_duration_hours": "h", "mechanical_test_age_days": "days",
+    "acid_concentration_percent": "%", "acid_exposure_days": "days",
+    "slump_mm": "mm", "compressive_strength_mpa": "MPa",
+    "split_tensile_strength_mpa": "MPa", "flexural_strength_mpa": "MPa",
+    "upv_m_s": "m/s", "rebound_estimated_strength_mpa": "MPa",
+    "initial_mass_kg": "kg", "exposed_mass_kg": "kg",
+    "mass_change_percent_derived": "%", "initial_compressive_strength_mpa": "MPa",
+    "residual_compressive_strength_mpa": "MPa", "strength_loss_percent_derived": "%",
+    "strength_retention_percent": "%", "absolute_mass_change_percent": "%",
+    "reference_age_days": "days",
+}
+
+
+def column_unit(column: str) -> str:
+    """Return the canonical physical unit for a dataset field, if one is defined."""
+    return COLUMN_UNITS.get(str(column), "")
+
+
+def quantity_label(prefix: str, column: str, *, dimensionless_marker: bool = False) -> str:
+    """Build a figure label such as ``Observed compressive strength (MPa)``.
+
+    The helper is intentionally used for derived chart quantities (prediction, residual, RMSE,
+    interval width) whose unit is inherited from the selected response.
+    """
+    unit = column_unit(column)
+    if unit and unit != "–":
+        return f"{prefix} ({unit})"
+    if unit == "–" and dimensionless_marker:
+        return f"{prefix} (–)"
+    return prefix
 
 ANALYSIS_NUMERIC_COLUMNS = [
     "fa_percent_numeric", "ggbs_percent_numeric", "sf_percent_numeric", "aas_b_ratio",

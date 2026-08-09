@@ -323,11 +323,19 @@ class Visualization3DPage(QWidget):
     def _show_specimen_metrics(self) -> None:
         if self.specimen_result is None: return
         summary = self.specimen_result.summary
-        self.specimen_capacity_pill.set_value(f"{self.specimen_result.capacity_value:.3f}"); self.specimen_mean_pill.set_value(f"{summary['mean']:.3f}")
+        self.specimen_capacity_pill.set_value(f"{self.specimen_result.capacity_value:.3f} MPa"); self.specimen_mean_pill.set_value(f"{summary['mean']:.3f}")
         self.specimen_range_pill.set_value(f"{summary['minimum']:.3f}–{summary['maximum']:.3f}"); self.specimen_cv_pill.set_value(f"{summary['coefficient_of_variation_percent']:.2f}%"); self.specimen_records_pill.set_value(self.specimen_result.source_records)
         assumptions = " ".join(self.specimen_result.assumptions)
+        scale_text = (
+            f"Colour scale: {self.specimen_result.color_min:.3f} to "
+            f"{self.specimen_result.color_max:.3f}; {self.specimen_result.color_scale_basis}. "
+            if self.specimen_result.color_min is not None and self.specimen_result.color_max is not None
+            else ""
+        )
         self.specimen_detail_label.setText(
-            f"{self.specimen_result.mix_id} · {self.specimen_result.analysis} · {self.specimen_result.field_type}. Field source: {self.specimen_result.field_source}. Capacity source: {self.specimen_result.capacity_source}. {assumptions}"
+            f"{self.specimen_result.mix_id} · {self.specimen_result.analysis} · {self.specimen_result.field_type}. "
+            f"Field source: {self.specimen_result.field_source}. Capacity source: {self.specimen_result.capacity_source}. "
+            f"{scale_text}{assumptions}"
         )
 
     def render_specimen(self) -> None:

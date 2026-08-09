@@ -53,6 +53,15 @@ def test_model_comparison_prediction_and_persistence(tmp_path):
         "mechanical_test_age_days": 28,
     })
     assert abs(loaded_prediction - scenario) < 1e-10
+    restored_ranking = service.comparison_from_artifact(loaded)
+    assert restored_ranking is not None
+    assert restored_ranking.best_algorithm == result.best_algorithm
+    assert restored_ranking.response == result.response
+    assert set(restored_ranking.predictors) == set(result.predictors)
+    assert service.artifact_matches_dataframe(loaded, subset) is True
+    changed = subset.copy()
+    changed.loc[changed.index[0], "compressive_strength_mpa"] += 0.25
+    assert service.artifact_matches_dataframe(loaded, changed) is False
 
     service.delete_artifact(saved)
     assert not saved.exists()

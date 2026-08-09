@@ -46,9 +46,10 @@ class ModelingPage(QWidget):
         self.tabs.addTab(self._library_tab(), "Model library")
         root.addWidget(self.tabs, 1)
 
-        self.context.data_changed.connect(self.refresh)
+        self.context.data_changed.connect(self._handle_data_change)
         self.refresh()
         self.refresh_library()
+        self._update_workflow_tabs()
 
     def _comparison_tab(self) -> QWidget:
         page = QWidget()
@@ -142,20 +143,23 @@ class ModelingPage(QWidget):
         self.result_tabs = QTabWidget()
         self.result_tabs.currentChanged.connect(self._active_result_tab_changed)
 
-        comparison_widget = QWidget()
-        comparison_layout = QHBoxLayout(comparison_widget)
-        comparison_splitter = QSplitter()
+        comparison_table_widget = QWidget()
+        comparison_table_layout = QVBoxLayout(comparison_table_widget)
+        comparison_table_layout.setContentsMargins(0, 0, 0, 0)
         self.ranking_model = DataFrameModel()
         self.ranking_table = QTableView()
         self.ranking_table.setModel(self.ranking_model)
         self.ranking_table.setSortingEnabled(True)
         self.ranking_table.setAlternatingRowColors(True)
-        comparison_splitter.addWidget(self.ranking_table)
+        comparison_table_layout.addWidget(self.ranking_table, 1)
+        self.result_tabs.addTab(comparison_table_widget, "Comparison table")
+
+        comparison_chart_widget = QWidget()
+        comparison_chart_layout = QVBoxLayout(comparison_chart_widget)
+        comparison_chart_layout.setContentsMargins(0, 0, 0, 0)
         self.comparison_canvas = FigureCanvasQTAgg(Figure(figsize=(7, 5), constrained_layout=True))
-        comparison_splitter.addWidget(self.comparison_canvas)
-        comparison_splitter.setSizes([500, 700])
-        comparison_layout.addWidget(comparison_splitter)
-        self.result_tabs.addTab(comparison_widget, "Ranking")
+        comparison_chart_layout.addWidget(self.comparison_canvas, 1)
+        self.result_tabs.addTab(comparison_chart_widget, "Ranking chart")
 
         diagnostic_widget = QWidget()
         diagnostic_layout = QVBoxLayout(diagnostic_widget)
@@ -163,19 +167,25 @@ class ModelingPage(QWidget):
         diagnostic_layout.addWidget(self.diagnostic_figure_tabs)
         self.result_tabs.addTab(diagnostic_widget, "Diagnostics")
 
-        influence_widget = QWidget()
-        influence_layout = QHBoxLayout(influence_widget)
-        influence_splitter = QSplitter()
+        influence_table_widget = QWidget()
+        influence_table_layout = QVBoxLayout(influence_table_widget)
+        influence_table_layout.setContentsMargins(0, 0, 0, 0)
         self.influence_model = DataFrameModel()
         self.influence_table = QTableView()
         self.influence_table.setModel(self.influence_model)
+        self.influence_table.setSortingEnabled(True)
         self.influence_table.setAlternatingRowColors(True)
-        influence_splitter.addWidget(self.influence_table)
-        self.influence_canvas = FigureCanvasQTAgg(Figure(figsize=(7, 5), constrained_layout=True))
-        influence_splitter.addWidget(self.influence_canvas)
-        influence_splitter.setSizes([460, 720])
-        influence_layout.addWidget(influence_splitter)
-        self.result_tabs.addTab(influence_widget, "Feature influence")
+        influence_table_layout.addWidget(self.influence_table, 1)
+        self.result_tabs.addTab(influence_table_widget, "Feature influence table")
+
+        influence_chart_widget = QWidget()
+        influence_chart_layout = QVBoxLayout(influence_chart_widget)
+        influence_chart_layout.setContentsMargins(0, 0, 0, 0)
+        self.influence_canvas = FigureCanvasQTAgg(
+            Figure(figsize=(7, 5), constrained_layout=True)
+        )
+        influence_chart_layout.addWidget(self.influence_canvas, 1)
+        self.result_tabs.addTab(influence_chart_widget, "Feature influence chart")
 
         results_layout.addWidget(self.result_tabs, 1)
         splitter.addWidget(results)
@@ -278,6 +288,26 @@ class ModelingPage(QWidget):
         self.library_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         layout.addWidget(self.library_table, 1)
         return page
+
+    def _handle_data_change(self) -> None:
+        """Invalidate page-local fitted state when the experimental dataset changes."""
+        self.current_result = None
+        self.active_artifact = None
+        self.batch_predictions = pd.DataFrame()
+        self.active_model_label.setText("No model selected")
+        self.active_model_detail.setText("Run a comparison or load a saved model.")
+        self.scenario_result.set_value("—")
+        self.refresh()
+        self._update_workflow_tabs()
+
+    def _update_workflow_tabs(self) -> None:
+        """Enable point prediction only after a fitted prediction model exists."""
+        has_model = self.active_artifact is not None
+        self.tabs.setTabEnabled(0, True)
+        self.tabs.setTabEnabled(1, has_model)
+        self.tabs.setTabEnabled(2, True)
+        if not has_model and self.tabs.currentIndex() == 1:
+            self.tabs.setCurrentIndex(0)
 
     def refresh(self) -> None:
         self._fill_combo(self.response_combo, MODEL_RESPONSE_COLUMNS, "compressive_strength_mpa")
@@ -478,9 +508,12 @@ class ModelingPage(QWidget):
             QMessageBox.warning(self, "Diagnostics unavailable", str(error))
 
     def _active_result_tab_changed(self, index: int) -> None:
-        keys = ["comparison", "diagnostics", "influence"]
-        if 0 <= index < len(keys) and keys[index] in self.figures:
-            self.figures["active"] = self.figures[keys[index]]
+        # The comparison table is intentionally a peer tab to the response charts.
+        # Only figure-bearing tabs update the active figure used by the export action.
+        key_by_index = {1: "comparison", 2: "diagnostics", 4: "influence"}
+        key = key_by_index.get(index)
+        if key and key in self.figures:
+            self.figures["active"] = self.figures[key]
 
     @staticmethod
     def _replace_canvas(old: FigureCanvasQTAgg, figure: Figure) -> FigureCanvasQTAgg:
@@ -528,6 +561,7 @@ class ModelingPage(QWidget):
             f"{metadata.get('observations', '—')} records"
         )
         self._configure_prediction_inputs(artifact)
+        self._update_workflow_tabs()
 
     def predict_scenario(self) -> None:
         if self.active_artifact is None:
@@ -592,8 +626,19 @@ class ModelingPage(QWidget):
         try:
             artifact = self.service.load_artifact(path)
             self._set_active_artifact(artifact)
+            ranking = self.service.comparison_from_artifact(artifact)
+            if ranking is not None and self.service.artifact_matches_dataframe(
+                artifact, self.context.dataframe
+            ):
+                self.context.set_model_comparison(ranking)
+                handoff = " Validated ranking restored; Digital Twin is now available."
+            else:
+                handoff = (
+                    " Point prediction is available, but the saved ranking does not match the active "
+                    "dataset; compare models again before opening Digital Twin."
+                )
             self.tabs.setCurrentIndex(1)
-            self.context.message.emit(f"Loaded {path.name}.")
+            self.context.message.emit(f"Loaded {path.name}." + handoff)
         except Exception as error:
             QMessageBox.warning(self, "Model could not be loaded", str(error))
 
@@ -641,8 +686,11 @@ class ModelingPage(QWidget):
             self.context.message.emit(f"Predictions exported to {destination.name}.")
 
     def export_active_figure(self) -> None:
-        keys = ["comparison", "diagnostics", "influence"]
-        key = keys[self.result_tabs.currentIndex()] if self.result_tabs.currentIndex() < len(keys) else "comparison"
+        # Table and ranking-chart tabs both export the ranking chart; later tabs export
+        # their corresponding response diagnostic or feature-influence figure.
+        key = {0: "comparison", 1: "comparison", 2: "diagnostics", 3: "influence"}.get(
+            self.result_tabs.currentIndex(), "comparison"
+        )
         figure = (
             self.diagnostic_figure_tabs.current_figure()
             if key == "diagnostics" else self.figures.get(key)

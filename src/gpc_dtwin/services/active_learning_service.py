@@ -669,7 +669,7 @@ class ActiveLearningService:
                 recommendations[x_field], recommendations["acquisition_score"],
                 marker="*", s=180, edgecolors="black", linewidths=0.8, label="Recommended",
             )
-            axis.set_ylabel("Acquisition score")
+            axis.set_ylabel("Acquisition score (–)")
             figure.colorbar(scatter, ax=axis, label="Relative uncertainty (%)")
         else:
             scatter = axis.scatter(
@@ -688,7 +688,7 @@ class ActiveLearningService:
                     xytext=(4, 4), textcoords="offset points", fontsize=8,
                 )
             axis.set_ylabel(COLUMN_LABELS.get(y_field, y_field))
-            figure.colorbar(scatter, ax=axis, label="Acquisition score")
+            figure.colorbar(scatter, ax=axis, label="Acquisition score (–)")
         axis.set_xlabel(COLUMN_LABELS.get(x_field, x_field))
         axis.set_title(f"{result.strategy}: recommended experiment region")
         axis.grid(True, alpha=0.22)
@@ -724,7 +724,7 @@ class ActiveLearningService:
             marker="^", label="Uncertainty",
         )
         score_axis.set_xlabel("Recommendation rank")
-        score_axis.set_ylabel("Normalized score")
+        score_axis.set_ylabel("Normalized score (–)")
         score_axis.set_ylim(-0.05, 1.05)
         score_axis.set_title("Priority components")
         figures = {"Response intervals": response_figure, "Priority scores": score_figure}
@@ -755,7 +755,7 @@ class ActiveLearningService:
             marker="^", label="Uncertainty",
         )
         score_axis.set_xlabel("Recommendation rank")
-        score_axis.set_ylabel("Normalized score")
+        score_axis.set_ylabel("Normalized score (–)")
         score_axis.set_ylim(-0.05, 1.05)
         apply_chart_style(figure)
         return figure
@@ -772,7 +772,7 @@ class ActiveLearningService:
         axis.set_xticks(positions)
         axis.set_xticklabels(table["metric"], rotation=35, ha="right")
         axis.set_title("Model metrics before and after completed experiments")
-        axis.set_ylabel("Metric value")
+        axis.set_ylabel("Metric value (mixed units)")
         axis.grid(True, axis="y", alpha=0.22)
         axis.legend(loc="best")
         return figure

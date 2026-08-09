@@ -21,7 +21,7 @@ from sklearn.neighbors import NearestNeighbors
 
 from gpc_dtwin import __version__
 from gpc_dtwin.chart_style import apply_chart_style
-from gpc_dtwin.columns import COLUMN_LABELS, MODEL_NUMERIC_PREDICTORS
+from gpc_dtwin.columns import COLUMN_LABELS, MODEL_NUMERIC_PREDICTORS, quantity_label
 from gpc_dtwin.field_compatibility import assess_usable_fields, clean_selected_frame
 from gpc_dtwin.services.model_registry import algorithm_names, build_estimator, build_preprocessor
 
@@ -374,6 +374,16 @@ class DigitalTwinService:
             "normalized_rmse_percent": normalized_rmse,
             "calibration_gap_percent": calibration_gap,
         }
+        # Fixed plotting scales make colour meaning stable when response-map axes change.
+        # The distance multiplier is capped at 2.0, therefore the theoretical maximum
+        # uncertainty/interval width for this fitted twin is deterministic.
+        color_scales = {
+            "estimated_response": [float(np.min(y)), float(np.max(y))],
+            "relative_uncertainty": [
+                0.0, float(max(2.0 * base_sigma / response_span * 100.0, 1e-9))
+            ],
+            "interval_width": [0.0, float(max(4.0 * base_half_width, 1e-9))],
+        }
         metadata = {
             "format_version": 2,
             "artifact_type": "rank_aware_uncertainty_twin",
@@ -400,6 +410,7 @@ class DigitalTwinService:
             "input_categories": categories,
             "numeric_training_ranges": numeric_ranges,
             "response_training_range": [float(np.min(y)), float(np.max(y))],
+            "figure_color_scales": color_scales,
             "training_distance_quantiles": distance_quantiles,
             "data_fingerprint_sha256": fingerprint,
             "observations": len(working),
@@ -657,6 +668,8 @@ class DigitalTwinService:
         predictions.attrs["grid_shape"] = (resolution, resolution)
         predictions.attrs["x_field"] = x_field
         predictions.attrs["y_field"] = y_field
+        predictions.attrs["figure_color_scales"] = dict(metadata.get("figure_color_scales", {}))
+        predictions.attrs["response_training_range"] = list(metadata.get("response_training_range", []))
         return predictions
 
     @classmethod
@@ -712,13 +725,13 @@ class DigitalTwinService:
             [minimum, maximum], [minimum, maximum], linestyle="--", linewidth=1,
             label="Ideal agreement",
         )
-        fit_axis.set_xlabel("Observed")
-        fit_axis.set_ylabel("Cross-validated estimate")
+        fit_axis.set_xlabel(quantity_label("Observed", result.response))
+        fit_axis.set_ylabel(quantity_label("Cross-validated estimate", result.response))
 
         error_figure, residual_axis = cls._single_figure("Error and uncertainty")
         residual_axis.scatter(std, np.abs(residual), label="Absolute error")
-        residual_axis.set_xlabel("Estimated uncertainty")
-        residual_axis.set_ylabel("Absolute error")
+        residual_axis.set_xlabel(quantity_label("Estimated uncertainty", result.response))
+        residual_axis.set_ylabel(quantity_label("Absolute error", result.response))
 
         coverage_figure, calibration_axis = cls._single_figure(
             f"Coverage {result.metrics['coverage_percent']:.1f}%"
@@ -731,8 +744,8 @@ class DigitalTwinService:
             label="Standardized residuals",
         )
         calibration_axis.axvline(0, linestyle="--", linewidth=1, label="Zero residual")
-        calibration_axis.set_xlabel("Standardized residual")
-        calibration_axis.set_ylabel("Count")
+        calibration_axis.set_xlabel("Standardized residual (–)")
+        calibration_axis.set_ylabel("Count (records)")
 
         figures = {
             "Prediction intervals": interval_figure,
@@ -765,16 +778,16 @@ class DigitalTwinService:
         maximum = max(float(observed.max()), float(upper.max()))
         fit_axis.plot([minimum, maximum], [minimum, maximum], linestyle="--", linewidth=1,
                       label="Ideal agreement")
-        fit_axis.set_xlabel("Observed"); fit_axis.set_ylabel("Cross-validated estimate")
+        fit_axis.set_xlabel(quantity_label("Observed", result.response)); fit_axis.set_ylabel(quantity_label("Cross-validated estimate", result.response))
         fit_axis.set_title("Prediction intervals")
         residual_axis.scatter(std, np.abs(residual), label="Absolute error")
-        residual_axis.set_xlabel("Estimated uncertainty"); residual_axis.set_ylabel("Absolute error")
+        residual_axis.set_xlabel(quantity_label("Estimated uncertainty", result.response)); residual_axis.set_ylabel(quantity_label("Absolute error", result.response))
         residual_axis.set_title("Error and uncertainty")
         standardized = np.divide(residual, std, out=np.zeros_like(residual), where=std > 1e-12)
         calibration_axis.hist(standardized, bins=min(10, max(4, len(standardized)//2)),
                               label="Standardized residuals")
         calibration_axis.axvline(0, linestyle="--", linewidth=1, label="Zero residual")
-        calibration_axis.set_xlabel("Standardized residual"); calibration_axis.set_ylabel("Count")
+        calibration_axis.set_xlabel("Standardized residual (–)"); calibration_axis.set_ylabel("Count (records)")
         calibration_axis.set_title(f"Coverage {result.metrics['coverage_percent']:.1f}%")
         apply_chart_style(figure)
         return figure
@@ -803,6 +816,37 @@ class DigitalTwinService:
         values = ordered[value_field].to_numpy(dtype=float).reshape(row_count, column_count)
         return x, y, values
 
+    @staticmethod
+    def _fixed_color_limits(
+        surface: pd.DataFrame, key: str, values: np.ndarray, *, include_zero: bool = False
+    ) -> tuple[float, float]:
+        """Resolve a stable colour scale stored by the fitted twin.
+
+        Older artifacts that pre-date stored scales fall back to finite data limits.
+        """
+        scales = surface.attrs.get("figure_color_scales", {}) or {}
+        limits = scales.get(key)
+        if isinstance(limits, (list, tuple)) and len(limits) == 2:
+            low, high = map(float, limits)
+        else:
+            finite = np.asarray(values, dtype=float)
+            finite = finite[np.isfinite(finite)]
+            if finite.size:
+                low, high = float(finite.min()), float(finite.max())
+            else:
+                low, high = 0.0, 1.0
+        if include_zero:
+            low = min(low, 0.0)
+        if not np.isfinite(low) or not np.isfinite(high):
+            low, high = 0.0, 1.0
+        if high - low <= 1e-12:
+            pad = max(abs(high) * 0.05, 1.0)
+            low -= pad
+            high += pad
+            if include_zero:
+                low = min(low, 0.0)
+        return low, high
+
     @classmethod
     def response_map_figures(
         cls,
@@ -821,13 +865,22 @@ class DigitalTwinService:
         )
         _, _, reliability = cls._surface_matrix(reliability_values, "reliability_code")
 
+        mean_low, mean_high = cls._fixed_color_limits(surface, "estimated_response", mean)
+        uncertainty_low, uncertainty_high = cls._fixed_color_limits(
+            surface, "relative_uncertainty", uncertainty, include_zero=True
+        )
         mean_figure, mean_axis = cls._single_figure("Estimated response")
-        mean_plot = mean_axis.contourf(grid_x, grid_y, mean, levels=18, cmap="viridis")
+        mean_plot = mean_axis.contourf(
+            grid_x, grid_y, mean, levels=np.linspace(mean_low, mean_high, 18),
+            cmap="viridis", extend="both"
+        )
         mean_figure.colorbar(mean_plot, ax=mean_axis, label=response_label)
 
         uncertainty_figure, uncertainty_axis = cls._single_figure("Relative uncertainty")
         uncertainty_plot = uncertainty_axis.contourf(
-            grid_x, grid_y, uncertainty, levels=18, cmap="magma"
+            grid_x, grid_y, uncertainty,
+            levels=np.linspace(uncertainty_low, uncertainty_high, 18),
+            cmap="magma", extend="max"
         )
         uncertainty_figure.colorbar(uncertainty_plot, ax=uncertainty_axis, label="Uncertainty (%)")
 
@@ -891,10 +944,21 @@ class DigitalTwinService:
         mean_axis, uncertainty_axis, reliability_axis = (
             figure.add_subplot(131), figure.add_subplot(132), figure.add_subplot(133)
         )
-        mean_plot = mean_axis.contourf(grid_x, grid_y, mean, levels=18, cmap="viridis")
+        mean_low, mean_high = cls._fixed_color_limits(surface, "estimated_response", mean)
+        uncertainty_low, uncertainty_high = cls._fixed_color_limits(
+            surface, "relative_uncertainty", uncertainty, include_zero=True
+        )
+        mean_plot = mean_axis.contourf(
+            grid_x, grid_y, mean, levels=np.linspace(mean_low, mean_high, 18),
+            cmap="viridis", extend="both"
+        )
         figure.colorbar(mean_plot, ax=mean_axis, label=response_label)
         mean_axis.set_title("Estimated response")
-        uncertainty_plot = uncertainty_axis.contourf(grid_x, grid_y, uncertainty, levels=18, cmap="magma")
+        uncertainty_plot = uncertainty_axis.contourf(
+            grid_x, grid_y, uncertainty,
+            levels=np.linspace(uncertainty_low, uncertainty_high, 18),
+            cmap="magma", extend="max"
+        )
         figure.colorbar(uncertainty_plot, ax=uncertainty_axis, label="Uncertainty (%)")
         uncertainty_axis.set_title("Relative uncertainty")
         reliability_plot = reliability_axis.contourf(

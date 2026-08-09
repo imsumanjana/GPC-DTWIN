@@ -708,7 +708,7 @@ class NDTDurabilityService:
         if "acid_type" in frame.columns:
             labels = labels + " · " + frame["acid_type"].astype(str)
         axis.barh(labels, frame["durability_score"])
-        axis.set_xlabel("Configurable durability score")
+        axis.set_xlabel("Configurable durability score (–)")
         axis.set_xlim(0, 100)
         axis.grid(True, axis="x", alpha=0.25)
         return figure
@@ -756,7 +756,21 @@ class NDTDurabilityService:
         pivot = durable.pivot_table(index="mix_id", columns="acid_type", values=metric, aggfunc="mean")
         figure = Figure(figsize=(8.6, 5.8), constrained_layout=True)
         axis = figure.add_subplot(111)
-        image = axis.imshow(pivot.values.astype(float), aspect="auto")
+        values = pivot.values.astype(float)
+        if metric == "strength_retention_percent":
+            vmin, vmax = 0.0, 100.0
+        elif metric == "mass_change_percent_derived":
+            source = pd.to_numeric(durable[metric], errors="coerce").to_numpy(dtype=float)
+            finite = source[np.isfinite(source)]
+            limit = max(float(np.max(np.abs(finite))) if finite.size else 1.0, 1e-9)
+            vmin, vmax = -limit, limit
+        else:
+            finite = values[np.isfinite(values)]
+            vmin = float(finite.min()) if finite.size else 0.0
+            vmax = float(finite.max()) if finite.size else 1.0
+            if vmax - vmin <= 1e-12:
+                vmax = vmin + 1.0
+        image = axis.imshow(values, aspect="auto", vmin=vmin, vmax=vmax)
         axis.set_xticks(range(len(pivot.columns)), pivot.columns)
         axis.set_yticks(range(len(pivot.index)), pivot.index)
         axis.set_xlabel("Exposure medium")

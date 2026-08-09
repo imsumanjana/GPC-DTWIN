@@ -85,7 +85,7 @@ class DashboardPage(QWidget):
         counts = DataService.record_group_counts(df)
         labels = [label.replace("_", " ").title() for label in counts.index]
         axis.barh(labels[::-1], counts.values[::-1])
-        axis.set_xlabel("Records")
+        axis.set_xlabel("Records (count)")
         axis.grid(axis="x", alpha=0.22)
         axis.tick_params(axis="y", labelsize=8)
         return figure
@@ -101,7 +101,7 @@ class DashboardPage(QWidget):
         status = status.str.replace(";", ";\n", regex=False)
         counts = status.value_counts().head(8)
         axis.barh(counts.index[::-1], counts.values[::-1])
-        axis.set_xlabel("Records")
+        axis.set_xlabel("Records (count)")
         axis.grid(axis="x", alpha=0.22)
         axis.tick_params(axis="y", labelsize=8)
         return figure
@@ -117,7 +117,7 @@ class DashboardPage(QWidget):
         data["compressive_strength_mpa"] = pd.to_numeric(data["compressive_strength_mpa"], errors="coerce")
         data = data.sort_values("mix_id", key=lambda s: s.str.extract(r"(\d+)")[0].astype(int))
         axis.plot(data["mix_id"], data["compressive_strength_mpa"], marker="o")
-        axis.set_ylabel("MPa")
+        axis.set_ylabel("Compressive strength (MPa)")
         axis.set_xlabel("Mix")
         axis.grid(True, alpha=0.22)
         return figure

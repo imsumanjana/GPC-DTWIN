@@ -49,9 +49,11 @@ class DigitalTwinPage(QWidget):
         root.addWidget(self.tabs, 1)
 
         self.context.data_changed.connect(self.refresh)
-        self.context.model_comparison_changed.connect(self._refresh_model_ranking)
+        self.context.model_comparison_changed.connect(self._sync_from_prediction_ranking)
+        self.context.active_twin_changed.connect(self._update_workflow_tabs)
         self.refresh()
         self.refresh_library()
+        self._update_workflow_tabs()
 
     def _build_tab(self) -> QWidget:
         page = QWidget()
@@ -149,17 +151,28 @@ class DigitalTwinPage(QWidget):
         self.calibration_label.setWordWrap(True)
         results_layout.addWidget(self.calibration_label)
 
-        calibration_splitter = QSplitter()
+        self.calibration_result_tabs = QTabWidget()
+        self.calibration_result_tabs.setDocumentMode(True)
+
+        calibration_table_widget = QWidget()
+        calibration_table_layout = QVBoxLayout(calibration_table_widget)
+        calibration_table_layout.setContentsMargins(0, 0, 0, 0)
         self.calibration_model = DataFrameModel()
         self.calibration_table = QTableView()
         self.calibration_table.setModel(self.calibration_model)
         self.calibration_table.setSortingEnabled(True)
         self.calibration_table.setAlternatingRowColors(True)
-        calibration_splitter.addWidget(self.calibration_table)
+        calibration_table_layout.addWidget(self.calibration_table, 1)
+        self.calibration_result_tabs.addTab(calibration_table_widget, "Calibration table")
+
+        calibration_charts_widget = QWidget()
+        calibration_charts_layout = QVBoxLayout(calibration_charts_widget)
+        calibration_charts_layout.setContentsMargins(0, 0, 0, 0)
         self.calibration_figure_tabs = FigureTabs(minimum_canvas_size=(620, 540))
-        calibration_splitter.addWidget(self.calibration_figure_tabs)
-        calibration_splitter.setSizes([520, 780])
-        results_layout.addWidget(calibration_splitter, 1)
+        calibration_charts_layout.addWidget(self.calibration_figure_tabs, 1)
+        self.calibration_result_tabs.addTab(calibration_charts_widget, "Response charts")
+
+        results_layout.addWidget(self.calibration_result_tabs, 1)
         splitter.addWidget(results)
         splitter.setSizes([360, 1050])
         layout.addWidget(splitter)
@@ -350,9 +363,89 @@ class DigitalTwinPage(QWidget):
         if self.context.active_twin_artifact is None and self.active_artifact is not None:
             self.active_artifact = None
             self.current_result = None
-        self._refresh_model_ranking()
+        self._sync_from_prediction_ranking()
 
-    def refresh_predictor_availability(self, *_args) -> None:
+    def _sync_from_prediction_ranking(self, *_args) -> None:
+        """Make the Digital Twin consume the active validated Prediction configuration.
+
+        The Digital Twin is a downstream stage.  Its response, predictor set, and
+        review-record policy therefore come from the latest successful Predictive
+        Modelling comparison instead of asking the user to recreate the same
+        configuration manually.  This prevents false "no matching ranking" states
+        caused only by different default check-box selections.
+        """
+        if not hasattr(self, "response_combo") or not hasattr(self, "predictor_list"):
+            return
+        ranking = self.context.model_comparison
+        if ranking is None:
+            self.response_combo.setEnabled(False)
+            self.predictor_list.setEnabled(False)
+            self.include_review.setEnabled(False)
+            self.method_combo.clear()
+            self.method_combo.addItem("Run Predictive Models first", None)
+            self.method_combo.setEnabled(False)
+            self.build_button.setEnabled(False)
+            self.predictor_note.setText(
+                "Digital Twin inputs are inherited from the latest validated Predictive Modelling run."
+            )
+            self.model_note.setText(
+                "Locked: complete a model comparison in Predictive Models before building a Digital Twin."
+            )
+            self._update_workflow_tabs()
+            return
+
+        metadata = ranking.artifact.get("metadata", {})
+        response = str(metadata.get("response", ranking.response))
+        predictors = set(str(value) for value in getattr(ranking, "predictors", ()))
+        include_review = bool(metadata.get("include_review_records", False))
+
+        self.response_combo.blockSignals(True)
+        index = self.response_combo.findData(response)
+        if index >= 0:
+            self.response_combo.setCurrentIndex(index)
+        self.response_combo.blockSignals(False)
+
+        self.include_review.blockSignals(True)
+        self.include_review.setChecked(include_review)
+        self.include_review.blockSignals(False)
+
+        # Refresh availability for the inherited response, then enforce exactly the
+        # predictor set that was actually validated (after any automatic omissions).
+        self.refresh_predictor_availability(_skip_ranking_refresh=True)
+        self.predictor_list.blockSignals(True)
+        for item_index in range(self.predictor_list.count()):
+            item = self.predictor_list.item(item_index)
+            field = str(item.data(Qt.ItemDataRole.UserRole))
+            item.setCheckState(
+                Qt.CheckState.Checked if field in predictors else Qt.CheckState.Unchecked
+            )
+        self.predictor_list.blockSignals(False)
+
+        # These configuration controls are intentionally read-only here. To change
+        # them, the user must validate the new configuration in Predictive Models.
+        self.response_combo.setEnabled(False)
+        self.predictor_list.setEnabled(False)
+        self.include_review.setEnabled(False)
+        self.predictor_note.setText(
+            "Inherited from Predictive Models: response, validated predictors, and review-record policy. "
+            "Change these settings in Predictive Models and compare again to update the Digital Twin."
+        )
+        self._refresh_model_ranking()
+        self._update_workflow_tabs()
+
+    def _update_workflow_tabs(self, *_args) -> None:
+        if not hasattr(self, "tabs"):
+            return
+        has_ranking = self.context.model_comparison is not None
+        has_twin = self.context.active_twin_artifact is not None
+        self.tabs.setTabEnabled(0, has_ranking)
+        self.tabs.setTabEnabled(1, has_twin)
+        self.tabs.setTabEnabled(2, has_twin)
+        self.tabs.setTabEnabled(3, has_ranking)
+        if not has_twin and self.tabs.currentIndex() in (1, 2):
+            self.tabs.setCurrentIndex(0)
+
+    def refresh_predictor_availability(self, *_args, _skip_ranking_refresh: bool = False) -> None:
         if not hasattr(self, "predictor_list"):
             return
         response = self.response_combo.currentData()
@@ -400,7 +493,8 @@ class DigitalTwinPage(QWidget):
             self.predictor_note.setText(
                 "All listed predictors have usable overlap with the selected response."
             )
-        self._refresh_model_ranking()
+        if not _skip_ranking_refresh:
+            self._refresh_model_ranking()
 
     def _refresh_model_ranking(self, *_args) -> None:
         if not hasattr(self, "method_combo") or not hasattr(self, "predictor_list"):
@@ -548,6 +642,7 @@ class DigitalTwinPage(QWidget):
         )
         self._configure_scenario_inputs(artifact)
         self._configure_map_axes(artifact)
+        self._update_workflow_tabs()
 
     def _configure_scenario_inputs(self, artifact: dict) -> None:
         metadata = artifact["metadata"]
@@ -759,6 +854,30 @@ class DigitalTwinPage(QWidget):
             return
         try:
             artifact = self.service.load_artifact(path)
+            ranking = self.context.model_comparison
+            if ranking is None:
+                raise ValueError("Run Predictive Models before loading a Digital Twin.")
+            twin_meta = artifact.get("metadata", {})
+            ranking_meta = ranking.artifact.get("metadata", {})
+            if str(twin_meta.get("response", "")) != str(ranking_meta.get("response", "")):
+                raise ValueError(
+                    "The selected twin belongs to a different response. Validate that response in Predictive Models first."
+                )
+            if set(twin_meta.get("predictors", [])) != set(getattr(ranking, "predictors", ())):
+                raise ValueError(
+                    "The selected twin uses a different predictor set. Validate the matching configuration in Predictive Models first."
+                )
+            if bool(twin_meta.get("include_review_records", False)) != bool(
+                ranking_meta.get("include_review_records", False)
+            ):
+                raise ValueError(
+                    "The selected twin uses a different review-record policy. Revalidate the matching Prediction configuration first."
+                )
+            ranked_algorithms = set(ranking.rankings["algorithm"].astype(str))
+            if str(twin_meta.get("method", twin_meta.get("algorithm", ""))) not in ranked_algorithms:
+                raise ValueError(
+                    "The selected twin does not use one of the models in the active validated ranking."
+                )
             self._set_active_artifact(artifact)
             self.tabs.setCurrentIndex(1)
             self.context.message.emit(f"Loaded {path.name}.")
