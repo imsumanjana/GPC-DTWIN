@@ -80,7 +80,7 @@ def test_durability_twin_scenario_sweep_and_persistence(tmp_path):
     result = service.build_durability_twin(
         _dataset(),
         response="residual_compressive_strength_mpa",
-        method="Forest Ensemble",
+        method="Random Forest",
         confidence_percent=95.0,
     )
     assert result.observations == 8

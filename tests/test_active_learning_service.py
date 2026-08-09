@@ -29,7 +29,7 @@ def _run():
             "sf_percent_numeric", "aas_b_ratio",
         ],
         variables=variables,
-        method="Gaussian Process",
+        method="Random Forest",
         strategy="Balanced exploration",
         direction="Maximize",
         candidate_count=90,

@@ -23,6 +23,8 @@ class ApplicationContext(QObject):
     data_changed = pyqtSignal()
     audit_changed = pyqtSignal()
     message = pyqtSignal(str)
+    model_comparison_changed = pyqtSignal()
+    active_twin_changed = pyqtSignal()
 
     def __init__(self, database_path: Path | str = DATABASE_PATH,
                  reference_dataset: Path | str = REFERENCE_DATASET):
@@ -34,6 +36,48 @@ class ApplicationContext(QObject):
         self.audit_issues = pd.DataFrame()
         self.last_import_path: Path | None = None
         self.last_backup_path: Path | None = None
+        self.model_comparison = None
+        self.active_twin_artifact: dict | None = None
+
+    def clear_model_state(self, emit: bool = True) -> None:
+        """Invalidate model/twin state whenever the active experimental data change."""
+        had_comparison = self.model_comparison is not None
+        had_twin = self.active_twin_artifact is not None
+        self.model_comparison = None
+        self.active_twin_artifact = None
+        if emit and had_comparison:
+            self.model_comparison_changed.emit()
+        if emit and had_twin:
+            self.active_twin_changed.emit()
+
+    def set_model_comparison(self, result) -> None:
+        self.model_comparison = result
+        self.model_comparison_changed.emit()
+
+    def set_active_twin(self, artifact: dict | None) -> None:
+        self.active_twin_artifact = artifact
+        self.active_twin_changed.emit()
+
+    def matching_model_comparison(
+        self,
+        response: str,
+        predictors: list[str],
+        include_review_records: bool = False,
+        group_column: str = "mix_id",
+    ):
+        result = self.model_comparison
+        if result is None:
+            return None
+        metadata = result.artifact.get("metadata", {})
+        if metadata.get("response") != response:
+            return None
+        if set(metadata.get("predictors", [])) != set(predictors):
+            return None
+        if bool(metadata.get("include_review_records", False)) != bool(include_review_records):
+            return None
+        if str(metadata.get("group_column", "mix_id")) != str(group_column):
+            return None
+        return result
 
     def bootstrap(self) -> None:
         ensure_user_directories()
@@ -82,6 +126,7 @@ class ApplicationContext(QObject):
         if self.repository.count() > 0:
             self.backup_database(emit=False)
         path = self.repository.restore(source)
+        self.clear_model_state(emit=False)
         self.reload(emit=False)
         self.run_audit(emit=False)
         if emit:
@@ -98,6 +143,7 @@ class ApplicationContext(QObject):
         if create_backup and self.database_path.exists() and self.repository.count() > 0:
             self.backup_database(emit=False)
         self.repository.replace_records(dataframe)
+        self.clear_model_state(emit=False)
         self.last_import_path = path
         self.reload(emit=False)
         self.run_audit(emit=False)
@@ -111,6 +157,7 @@ class ApplicationContext(QObject):
         path = Path(path)
         dataframe = DataService.load_csv(path)
         appended = self.repository.append_records(dataframe)
+        self.clear_model_state(emit=False)
         self.last_import_path = path
         self.reload(emit=False)
         self.run_audit(emit=False)
@@ -136,6 +183,7 @@ class ApplicationContext(QObject):
         if status not in VERIFICATION_STATES:
             raise ValueError(f"Unsupported data state: {status}")
         self.repository.update_data_status(record_id, status)
+        self.clear_model_state(emit=False)
         self.reload(emit=False)
         self.run_audit(emit=False)
         self.data_changed.emit()

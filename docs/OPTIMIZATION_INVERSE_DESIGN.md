@@ -12,10 +12,19 @@ Select the fields considered by the response surrogates. Decision variables shou
 as surrogate inputs when the underlying response data support them. Other selected fields remain fixed
 at fitted median or modal values during a search.
 
-Available methods:
+Available prediction models:
 
-- Gaussian Process
-- Forest Ensemble
+- Linear Regression
+- Ridge Regression
+- Elastic Net
+- Support Vector Regression
+- Random Forest
+- Gradient Boosting
+- Extra Trees
+
+The Optimization workspace uses Random Forest as its standalone default unless the user selects another
+shared model. This selector is independent of the single-response Digital Twin recommendation because
+optimization can fit several different response surrogates in one run.
 
 A separate surrogate is fitted for each unique objective, constraint, or target response. Grouped
 cross-validation by mix identity is used when enough groups are available.

@@ -350,7 +350,7 @@ class ActiveLearningService:
         response: str,
         predictors: list[str],
         variables: Iterable[LearningVariable],
-        method: str = "Gaussian Process",
+        method: str = "Random Forest",
         strategy: str = "Balanced exploration",
         direction: str = "Maximize",
         confidence_percent: float = 95.0,

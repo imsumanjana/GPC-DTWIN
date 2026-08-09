@@ -1,5 +1,19 @@
 # Change Log
 
+## Version 1.2.0
+
+- Centralized all seven regression algorithms in a shared model registry.
+- Added fold-level validation variability and dynamic model-status notes to Predictive Models.
+- Made Predictive Models the source of the Digital Twin model ranking and default recommendation.
+- Added shared model-comparison and active-twin state to `ApplicationContext` with automatic stale-state invalidation.
+- Replaced new-build Gaussian Process / Forest Ensemble twins with rank-aware twins that can use any of the seven shared models.
+- Added algorithm-independent empirical uncertainty intervals based on out-of-fold residuals and distance adjustment.
+- Made 3D Response Surface consume the active Digital Twin without retraining.
+- Replaced the sinusoidal synthetic specimen field with physics-informed compression, splitting-tensile, flexural, and acid-diffusion fields.
+- Added explicit field/capacity provenance and modelling assumptions to specimen outputs.
+- Migrated Active Learning, Optimization, inverse design, and durability estimators to the shared model family.
+- Rebuilt the macOS ARM64 GitHub Actions workflow to install the pinned release stack, bundle all required data/resources/docs, run frozen-app self-checks, and upload with `actions/upload-artifact@v6`.
+
 ## Version 1.1.5
 
 - Fixed grouped regression when `mix_id` or another grouping field is also selected as a predictor.

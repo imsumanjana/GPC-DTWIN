@@ -55,8 +55,10 @@ The estimator supports these responses:
 - strength retention.
 
 Default inputs include binder composition, initial compressive strength, exposure medium,
-concentration, and exposure duration. Gaussian Process and Forest Ensemble methods provide point
-estimates, prediction intervals, relative uncertainty, range checks, nearest-data distance, and
+concentration, and exposure duration. The durability estimator uses the same seven shared regression
+algorithms as the core prediction engine. Random Forest is the default standalone durability surrogate,
+and any of the seven models may be selected. The common Digital Twin uncertainty layer supplies point
+estimates, empirical prediction intervals, relative uncertainty, range checks, nearest-data distance, and
 reliability classes.
 
 Global cross-validation performance limits scenario reliability. An apparently close scenario is not

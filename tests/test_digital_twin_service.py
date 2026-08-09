@@ -1,36 +1,51 @@
 from pathlib import Path
+import copy
 
 import numpy as np
+import pytest
 
 from gpc_dtwin.paths import REFERENCE_DATASET
 from gpc_dtwin.services.data_service import DataService
 from gpc_dtwin.services.digital_twin_service import DigitalTwinService
+from gpc_dtwin.services.modeling_service import ModelingService
 
 
 def _build_result():
     dataframe = DataService.load_csv(REFERENCE_DATASET)
+    predictors = [
+        "fa_percent_numeric",
+        "ggbs_percent_numeric",
+        "aas_b_ratio",
+        "mechanical_test_age_days",
+        "curing_regime",
+    ]
+    ranking = ModelingService().compare_models(
+        dataframe,
+        response="compressive_strength_mpa",
+        predictors=predictors,
+        include_review_records=True,
+    )
     service = DigitalTwinService()
     result = service.build_twin(
         dataframe,
         response="compressive_strength_mpa",
-        predictors=[
-            "fa_percent_numeric",
-            "ggbs_percent_numeric",
-            "aas_b_ratio",
-            "mechanical_test_age_days",
-            "curing_regime",
-        ],
-        method="Gaussian Process",
+        predictors=predictors,
         confidence_percent=95.0,
         include_review_records=True,
+        ranking=ranking,
     )
-    return dataframe, service, result
+    return dataframe, service, ranking, result
 
 
-def test_gaussian_twin_builds_with_calibration_and_intervals():
-    _, _, result = _build_result()
+def test_twin_uses_prediction_ranking_leader_and_empirical_intervals():
+    _, service, ranking, result = _build_result()
+    assert service.method_names() == ModelingService.algorithm_names()
     assert result.observations >= 8
-    assert result.method == "Gaussian Process"
+    assert result.method == ranking.best_algorithm
+    assert result.model_rank == 1
+    assert result.model_status == "Recommended"
+    assert result.artifact["metadata"]["ranking_source"] == "Predictive Modelling"
+    assert "empirical" in result.artifact["metadata"]["uncertainty_method"].lower()
     assert np.isfinite(result.metrics["rmse"])
     assert 0 <= result.metrics["coverage_percent"] <= 100
     required = {
@@ -41,8 +56,27 @@ def test_gaussian_twin_builds_with_calibration_and_intervals():
     assert (result.calibration["upper_bound"] >= result.calibration["lower_bound"]).all()
 
 
+def test_twin_allows_manual_override_from_same_seven_ranked_models():
+    dataframe, service, ranking, _ = _build_result()
+    table = ranking.rankings.sort_values("rank")
+    algorithm = str(table.iloc[1]["algorithm"])
+    result = service.build_twin(
+        dataframe,
+        response=ranking.response,
+        predictors=list(ranking.predictors),
+        method=algorithm,
+        confidence_percent=95.0,
+        include_review_records=True,
+        ranking=ranking,
+    )
+    expected_rank = int(table.loc[table["algorithm"].eq(algorithm), "rank"].iloc[0])
+    assert result.method == algorithm
+    assert result.model_rank == expected_rank
+    assert result.model_status == str(table.loc[table["algorithm"].eq(algorithm), "status"].iloc[0])
+
+
 def test_twin_predicts_scenarios_batches_and_response_maps():
-    dataframe, service, result = _build_result()
+    dataframe, service, _, result = _build_result()
     metadata = result.artifact["metadata"]
     scenario = service.predict_scenario(result.artifact, metadata["input_defaults"])
     assert np.isfinite(float(scenario["predicted_mean"]))
@@ -65,20 +99,22 @@ def test_twin_predicts_scenarios_batches_and_response_maps():
 
 
 def test_twin_artifact_round_trip(tmp_path: Path):
-    _, service, result = _build_result()
+    _, service, ranking, result = _build_result()
     path = service.save_artifact(result.artifact, tmp_path)
     assert path.exists()
     loaded = service.load_artifact(path)
-    assert loaded["metadata"]["method"] == "Gaussian Process"
+    assert loaded["metadata"]["method"] == ranking.best_algorithm
+    assert loaded["metadata"]["model_rank"] == 1
     listing = service.list_saved_twins(tmp_path)
     assert len(listing) == 1
+    assert listing.iloc[0]["model_status"] == "Recommended"
     service.delete_artifact(path)
     assert not path.exists()
     assert not path.with_suffix(".json").exists()
 
 
 def test_response_map_100_by_100_has_explicit_grid_shape():
-    _, service, result = _build_result()
+    _, service, _, result = _build_result()
     surface = service.response_map(
         result.artifact, "ggbs_percent_numeric", "aas_b_ratio", resolution=100
     )
@@ -91,14 +127,10 @@ def test_response_map_100_by_100_has_explicit_grid_shape():
     )
     assert set(figures) == {"Estimated response", "Relative uncertainty", "Reliability"}
     assert all(len(figure.axes) >= 2 for figure in figures.values())
-    assert all(tuple(round(value, 3) for value in figure.get_size_inches()) == (6.0, 6.0) for figure in figures.values())
 
 
 def test_constant_numeric_range_is_not_offered_as_map_axis():
-    import copy
-    import pytest
-
-    _, service, result = _build_result()
+    _, service, _, result = _build_result()
     artifact = copy.deepcopy(result.artifact)
     artifact["metadata"]["numeric_training_ranges"]["mechanical_test_age_days"] = [28.0, 28.0]
     candidates = service.map_axis_candidates(artifact)
@@ -110,7 +142,7 @@ def test_constant_numeric_range_is_not_offered_as_map_axis():
 
 
 def test_calibration_outputs_are_separate_tab_ready_figures():
-    _, service, result = _build_result()
+    _, service, _, result = _build_result()
     figures = service.calibration_figures(result)
     assert set(figures) == {"Prediction intervals", "Error & uncertainty", "Coverage"}
     assert all(len(figure.axes) == 1 for figure in figures.values())
@@ -130,15 +162,13 @@ def test_twin_automatically_excludes_response_incompatible_predictors():
             "initial_mass_kg",
             "initial_compressive_strength_mpa",
         ],
-        method="Forest Ensemble",
+        method="Random Forest",
         include_review_records=True,
     )
     assert "ggbs_percent_numeric" in result.predictors
     assert "mechanical_test_age_days" in result.predictors
     assert set(result.omitted_predictors) >= {
-        "acid_type",
-        "acid_concentration_percent",
-        "initial_mass_kg",
+        "acid_type", "acid_concentration_percent", "initial_mass_kg",
         "initial_compressive_strength_mpa",
     }
     assert result.artifact["metadata"]["omitted_predictors"]

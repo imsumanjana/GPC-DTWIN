@@ -1,4 +1,4 @@
-"""Uncertainty-aware digital twin modeling, calibration, and response maps."""
+"""Rank-aware uncertainty calibration, digital-twin prediction, and response maps."""
 
 from __future__ import annotations
 
@@ -9,33 +9,25 @@ import json
 from pathlib import Path
 import re
 from typing import Any
-import warnings
 
 import joblib
 import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 from scipy.stats import norm
-from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.exceptions import ConvergenceWarning
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import ConstantKernel, Matern, WhiteKernel
-from sklearn.impute import SimpleImputer
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import GroupKFold, KFold
 from sklearn.neighbors import NearestNeighbors
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from gpc_dtwin import __version__
 from gpc_dtwin.chart_style import apply_chart_style
 from gpc_dtwin.columns import COLUMN_LABELS, MODEL_NUMERIC_PREDICTORS
 from gpc_dtwin.field_compatibility import assess_usable_fields, clean_selected_frame
+from gpc_dtwin.services.model_registry import algorithm_names, build_estimator, build_preprocessor
 
 
-TWIN_METHODS = ("Gaussian Process", "Forest Ensemble")
 REVIEW_STATES = {"REQUIRES_REVIEW", "CONFLICTING"}
+LEGACY_TWIN_METHODS = {"Gaussian Process", "Forest Ensemble"}
 
 
 @dataclass
@@ -53,14 +45,25 @@ class TwinBuildResult:
     metrics: dict[str, float]
     calibration: pd.DataFrame
     artifact: dict[str, Any]
+    model_rank: int | None = None
+    model_status: str = "Unranked"
+
+    @property
+    def algorithm(self) -> str:
+        return self.method
 
 
 class DigitalTwinService:
-    """Build calibrated surrogate models with prediction intervals and domain checks."""
+    """Use any ranked prediction model with empirical uncertainty and domain checks."""
 
     @staticmethod
     def method_names() -> list[str]:
-        return list(TWIN_METHODS)
+        """Backward-compatible name used by older UI/services; returns the seven shared models."""
+        return algorithm_names()
+
+    @staticmethod
+    def algorithm_names() -> list[str]:
+        return algorithm_names()
 
     @staticmethod
     def _slug(value: str) -> str:
@@ -110,7 +113,7 @@ class DigitalTwinService:
         include_review_records: bool,
         group_column: str,
     ) -> tuple[pd.DataFrame, int, list[str], list[str], dict[str, str]]:
-        requested = list(dict.fromkeys(predictors))
+        requested = [p for p in dict.fromkeys(predictors) if p != response]
         if not requested:
             raise ValueError("Select at least one predictor.")
         if response not in dataframe.columns:
@@ -175,31 +178,6 @@ class DigitalTwinService:
         )
 
     @staticmethod
-    def _preprocessor(predictors: list[str]) -> tuple[ColumnTransformer, list[str], list[str]]:
-        numeric = [column for column in predictors if column in MODEL_NUMERIC_PREDICTORS]
-        categorical = [column for column in predictors if column not in numeric]
-        transformers: list[tuple[str, Pipeline, list[str]]] = []
-        if numeric:
-            transformers.append((
-                "numeric",
-                Pipeline([
-                    ("imputer", SimpleImputer(strategy="median", keep_empty_features=True)),
-                    ("scale", StandardScaler()),
-                ]),
-                numeric,
-            ))
-        if categorical:
-            transformers.append((
-                "categorical",
-                Pipeline([
-                    ("imputer", SimpleImputer(strategy="constant", fill_value="Missing")),
-                    ("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
-                ]),
-                categorical,
-            ))
-        return ColumnTransformer(transformers=transformers, remainder="drop"), numeric, categorical
-
-    @staticmethod
     def _cross_validation(working: pd.DataFrame, group_column: str):
         if group_column in working.columns:
             groups = working[group_column].astype("string").fillna("Missing").to_numpy()
@@ -221,67 +199,14 @@ class DigitalTwinService:
         return list(splitter.split(working)), f"{folds}-fold cross-validation"
 
     @staticmethod
-    def _build_model(method: str, feature_count: int, response_variance: float):
-        if method == "Gaussian Process":
-            length_scale = np.ones(max(feature_count, 1), dtype=float)
-            noise = max(response_variance * 0.01, 1e-6)
-            kernel = (
-                ConstantKernel(1.0, (1e-2, 1e3))
-                * Matern(length_scale=length_scale, length_scale_bounds=(1e-2, 1e3), nu=1.5)
-                + WhiteKernel(noise_level=noise, noise_level_bounds=(1e-8, max(response_variance * 10, 1e-4)))
-            )
-            return GaussianProcessRegressor(
-                kernel=kernel,
-                alpha=1e-8,
-                normalize_y=True,
-                n_restarts_optimizer=1,
-                random_state=42,
-            )
-        if method == "Forest Ensemble":
-            return RandomForestRegressor(
-                n_estimators=260,
-                min_samples_leaf=1,
-                max_features=0.85,
-                bootstrap=True,
-                random_state=42,
-                n_jobs=1,
-            )
-        raise ValueError(f"Unsupported twin method: {method}")
-
-    @classmethod
     def _fit_components(
-        cls, x: pd.DataFrame, y: np.ndarray, predictors: list[str], method: str
-    ) -> tuple[ColumnTransformer, Any, np.ndarray]:
-        preprocessor, _, _ = cls._preprocessor(predictors)
+        x: pd.DataFrame, y: np.ndarray, predictors: list[str], algorithm: str
+    ):
+        preprocessor, _, _ = build_preprocessor(predictors)
         transformed = np.asarray(preprocessor.fit_transform(x), dtype=float)
-        model = cls._build_model(method, transformed.shape[1], float(np.var(y)))
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", ConvergenceWarning)
-            model.fit(transformed, y)
+        model = build_estimator(algorithm)
+        model.fit(transformed, y)
         return preprocessor, model, transformed
-
-    @staticmethod
-    def _predict_transformed(
-        method: str, model: Any, transformed: np.ndarray, confidence_percent: float
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        confidence = float(confidence_percent) / 100.0
-        alpha = 1.0 - confidence
-        if not 0.5 < confidence < 1.0:
-            raise ValueError("Confidence level must be between 50 and 100 percent.")
-        if method == "Gaussian Process":
-            mean, std = model.predict(transformed, return_std=True)
-            z_value = float(norm.ppf(1.0 - alpha / 2.0))
-            lower = mean - z_value * std
-            upper = mean + z_value * std
-            return np.asarray(mean), np.asarray(std), np.asarray(lower), np.asarray(upper)
-        if method == "Forest Ensemble":
-            tree_predictions = np.vstack([tree.predict(transformed) for tree in model.estimators_])
-            mean = tree_predictions.mean(axis=0)
-            std = tree_predictions.std(axis=0, ddof=1)
-            lower = np.quantile(tree_predictions, alpha / 2.0, axis=0)
-            upper = np.quantile(tree_predictions, 1.0 - alpha / 2.0, axis=0)
-            return mean, std, lower, upper
-        raise ValueError(f"Unsupported twin method: {method}")
 
     @staticmethod
     def _defaults(
@@ -317,52 +242,101 @@ class DigitalTwinService:
             "q99": float(np.quantile(nearest_other, 0.99)),
         }
 
+    @staticmethod
+    def _finite_sample_quantile(values: np.ndarray, confidence_percent: float) -> float:
+        values = np.asarray(values, dtype=float)
+        values = values[np.isfinite(values)]
+        if values.size == 0:
+            return 0.0
+        confidence = float(confidence_percent) / 100.0
+        if not 0.5 < confidence < 1.0:
+            raise ValueError("Confidence level must be between 50 and 100 percent.")
+        level = min(np.ceil((values.size + 1) * confidence) / values.size, 1.0)
+        try:
+            return float(np.quantile(values, level, method="higher"))
+        except TypeError:  # NumPy < 1.22 compatibility
+            return float(np.quantile(values, level, interpolation="higher"))
+
+    @staticmethod
+    def _distance_factor(distances: np.ndarray, q90: float) -> np.ndarray:
+        distances = np.asarray(distances, dtype=float)
+        q90 = max(float(q90), 1e-9)
+        excess = np.maximum(distances / q90 - 1.0, 0.0)
+        return 1.0 + 0.25 * np.clip(excess, 0.0, 4.0)
+
+    @staticmethod
+    def _ranking_metadata(ranking, algorithm: str) -> tuple[int | None, str, str]:
+        if ranking is None or getattr(ranking, "rankings", None) is None:
+            return None, "Unranked", "Direct selection"
+        table = ranking.rankings
+        row = table.loc[table["algorithm"].astype(str).eq(str(algorithm))]
+        if row.empty:
+            return None, "Unranked", "Direct selection"
+        record = row.iloc[0]
+        return int(record["rank"]), str(record.get("status", "Unranked")), "Predictive Modelling"
+
     def build_twin(
         self,
         dataframe: pd.DataFrame,
         response: str,
         predictors: list[str],
-        method: str = "Gaussian Process",
+        method: str | None = None,
         confidence_percent: float = 95.0,
         include_review_records: bool = False,
         group_column: str = "mix_id",
+        ranking=None,
     ) -> TwinBuildResult:
         requested_predictors = list(dict.fromkeys(predictors))
-        if method not in TWIN_METHODS:
-            raise ValueError(f"Unsupported twin method: {method}")
+        algorithm = method or (getattr(ranking, "best_algorithm", None) if ranking is not None else None)
+        if not algorithm:
+            raise ValueError(
+                "No prediction model is selected. Run Predictive Modelling for this response and predictor set first."
+            )
+        if algorithm not in algorithm_names():
+            raise ValueError(f"Unsupported prediction algorithm: {algorithm}")
         (
-            working, excluded_records, predictors, omitted_predictors, omitted_reasons
+            working, excluded_records, usable_predictors, omitted_predictors, omitted_reasons
         ) = self._prepare_working_data(
             dataframe, response, requested_predictors, include_review_records, group_column
         )
-        x = working[predictors].copy()
+        if ranking is not None:
+            if str(getattr(ranking, "response", "")) != str(response):
+                raise ValueError("The supplied model ranking belongs to a different response.")
+            if set(getattr(ranking, "predictors", ())) != set(usable_predictors):
+                raise ValueError(
+                    "The supplied model ranking uses a different predictor set. Re-run Predictive Modelling with the current configuration."
+                )
+
+        x = working[usable_predictors].copy()
         y = working[response].to_numpy(dtype=float)
         splits, cv_method = self._cross_validation(working, group_column)
-
         cv_mean = np.full(len(working), np.nan, dtype=float)
-        cv_std = np.full(len(working), np.nan, dtype=float)
-        cv_lower = np.full(len(working), np.nan, dtype=float)
-        cv_upper = np.full(len(working), np.nan, dtype=float)
+        cv_distance = np.full(len(working), np.nan, dtype=float)
 
         for train_index, test_index in splits:
-            preprocessor, model, _ = self._fit_components(
-                x.iloc[train_index], y[train_index], predictors, method
+            preprocessor, model, transformed_train = self._fit_components(
+                x.iloc[train_index], y[train_index], usable_predictors, algorithm
             )
             transformed_test = np.asarray(preprocessor.transform(x.iloc[test_index]), dtype=float)
-            mean, std, lower, upper = self._predict_transformed(
-                method, model, transformed_test, confidence_percent
-            )
-            cv_mean[test_index] = mean
-            cv_std[test_index] = std
-            cv_lower[test_index] = lower
-            cv_upper[test_index] = upper
+            cv_mean[test_index] = np.asarray(model.predict(transformed_test), dtype=float)
+            nearest = NearestNeighbors(n_neighbors=1).fit(transformed_train)
+            cv_distance[test_index] = nearest.kneighbors(transformed_test)[0][:, 0]
 
         residual = y - cv_mean
-        inside = (y >= cv_lower) & (y <= cv_upper)
-        interval_width = cv_upper - cv_lower
         rmse = float(np.sqrt(mean_squared_error(y, cv_mean)))
         mae = float(mean_absolute_error(y, cv_mean))
         r2 = float(r2_score(y, cv_mean))
+        base_sigma = max(float(np.sqrt(np.mean(np.square(residual)))), 1e-9)
+        base_half_width = max(
+            self._finite_sample_quantile(np.abs(residual), confidence_percent), 1e-9
+        )
+        cv_q90 = float(np.quantile(cv_distance[np.isfinite(cv_distance)], 0.90)) if np.isfinite(cv_distance).any() else 1.0
+        cv_factor = self._distance_factor(cv_distance, cv_q90)
+        cv_std = base_sigma * cv_factor
+        cv_lower = cv_mean - base_half_width * cv_factor
+        cv_upper = cv_mean + base_half_width * cv_factor
+        inside = (y >= cv_lower) & (y <= cv_upper)
+        interval_width = cv_upper - cv_lower
         coverage = float(np.mean(inside) * 100.0)
         mean_width = float(np.mean(interval_width))
         response_span = max(float(np.max(y) - np.min(y)), 1e-9)
@@ -378,15 +352,19 @@ class DigitalTwinService:
         calibration["upper_bound"] = cv_upper
         calibration["interval_width"] = interval_width
         calibration["residual"] = residual
+        calibration["nearest_training_distance"] = cv_distance
         calibration["within_interval"] = inside
 
-        preprocessor, model, transformed_training = self._fit_components(x, y, predictors, method)
-        defaults, categories, numeric_ranges = self._defaults(working, predictors)
+        preprocessor, model, transformed_training = self._fit_components(
+            x, y, usable_predictors, algorithm
+        )
+        defaults, categories, numeric_ranges = self._defaults(working, usable_predictors)
         distance_quantiles = self._distance_quantiles(transformed_training)
-        fingerprint_frame = working[[response, *predictors]].copy()
+        fingerprint_frame = working[[response, *usable_predictors]].copy()
         fingerprint = hashlib.sha256(
             pd.util.hash_pandas_object(fingerprint_frame, index=True).values.tobytes()
         ).hexdigest()
+        rank, status, ranking_source = self._ranking_metadata(ranking, algorithm)
         metrics = {
             "rmse": rmse,
             "mae": mae,
@@ -397,20 +375,27 @@ class DigitalTwinService:
             "calibration_gap_percent": calibration_gap,
         }
         metadata = {
-            "format_version": 1,
-            "artifact_type": "uncertainty_aware_twin",
+            "format_version": 2,
+            "artifact_type": "rank_aware_uncertainty_twin",
             "application_version": __version__,
             "created_at_utc": datetime.now(timezone.utc).isoformat(),
-            "method": method,
+            "method": algorithm,
+            "algorithm": algorithm,
+            "model_rank": rank,
+            "model_status": status,
+            "ranking_source": ranking_source,
             "response": response,
             "response_label": COLUMN_LABELS.get(response, response),
             "requested_predictors": requested_predictors,
-            "predictors": predictors,
+            "predictors": usable_predictors,
             "omitted_predictors": omitted_predictors,
             "omitted_predictor_reasons": omitted_reasons,
-            "numeric_predictors": [c for c in predictors if c in MODEL_NUMERIC_PREDICTORS],
-            "categorical_predictors": [c for c in predictors if c not in MODEL_NUMERIC_PREDICTORS],
+            "numeric_predictors": [c for c in usable_predictors if c in MODEL_NUMERIC_PREDICTORS],
+            "categorical_predictors": [c for c in usable_predictors if c not in MODEL_NUMERIC_PREDICTORS],
             "confidence_percent": float(confidence_percent),
+            "uncertainty_method": "Cross-validated empirical residual interval with distance adjustment",
+            "base_prediction_sigma": base_sigma,
+            "base_interval_half_width": base_half_width,
             "input_defaults": defaults,
             "input_categories": categories,
             "numeric_training_ranges": numeric_ranges,
@@ -420,6 +405,7 @@ class DigitalTwinService:
             "observations": len(working),
             "excluded_records": excluded_records,
             "include_review_records": bool(include_review_records),
+            "group_column": group_column,
             "cv_method": cv_method,
             "metrics": metrics,
         }
@@ -432,10 +418,10 @@ class DigitalTwinService:
         return TwinBuildResult(
             response=response,
             requested_predictors=tuple(requested_predictors),
-            predictors=tuple(predictors),
+            predictors=tuple(usable_predictors),
             omitted_predictors=tuple(omitted_predictors),
             omitted_reasons=omitted_reasons,
-            method=method,
+            method=algorithm,
             confidence_percent=float(confidence_percent),
             observations=len(working),
             excluded_records=excluded_records,
@@ -443,6 +429,8 @@ class DigitalTwinService:
             metrics=metrics,
             calibration=calibration,
             artifact=artifact,
+            model_rank=rank,
+            model_status=status,
         )
 
     @staticmethod
@@ -525,20 +513,50 @@ class DigitalTwinService:
             reasons.append(reason)
         return classes, reasons, normalized
 
+    @staticmethod
+    def _legacy_predict(metadata: dict[str, Any], model: Any, transformed: np.ndarray):
+        confidence = float(metadata.get("confidence_percent", 95.0)) / 100.0
+        alpha = 1.0 - confidence
+        method = metadata.get("method")
+        if method == "Gaussian Process":
+            mean, std = model.predict(transformed, return_std=True)
+            z = float(norm.ppf(1.0 - alpha / 2.0))
+            return np.asarray(mean), np.asarray(std), np.asarray(mean) - z * std, np.asarray(mean) + z * std
+        if method == "Forest Ensemble" and hasattr(model, "estimators_"):
+            tree_predictions = np.vstack([tree.predict(transformed) for tree in model.estimators_])
+            mean = tree_predictions.mean(axis=0)
+            std = tree_predictions.std(axis=0, ddof=1)
+            lower = np.quantile(tree_predictions, alpha / 2.0, axis=0)
+            upper = np.quantile(tree_predictions, 1.0 - alpha / 2.0, axis=0)
+            return mean, std, lower, upper
+        raise ValueError("The selected legacy twin method is unsupported by this build.")
+
     @classmethod
     def predict_dataframe(cls, artifact: dict[str, Any], dataframe: pd.DataFrame) -> pd.DataFrame:
         frame = cls._prepare_prediction_frame(artifact, dataframe)
         metadata = artifact["metadata"]
         transformed = np.asarray(artifact["preprocessor"].transform(frame), dtype=float)
-        mean, std, lower, upper = cls._predict_transformed(
-            metadata["method"], artifact["model"], transformed, metadata["confidence_percent"]
-        )
+        method = str(metadata.get("method", ""))
+        if int(metadata.get("format_version", 1)) < 2 and method in LEGACY_TWIN_METHODS:
+            mean, std, lower, upper = cls._legacy_predict(metadata, artifact["model"], transformed)
+        else:
+            mean = np.asarray(artifact["model"].predict(transformed), dtype=float)
+            nearest = NearestNeighbors(n_neighbors=1).fit(np.asarray(artifact["training_transformed"]))
+            distances, _ = nearest.kneighbors(transformed)
+            nearest_distance = distances[:, 0]
+            q90 = float(metadata.get("training_distance_quantiles", {}).get("q90", 1.0))
+            factor = cls._distance_factor(nearest_distance, q90)
+            std = float(metadata.get("base_prediction_sigma", 1e-9)) * factor
+            half = float(metadata.get("base_interval_half_width", 1e-9)) * factor
+            lower = mean - half
+            upper = mean + half
+
         nearest = NearestNeighbors(n_neighbors=1).fit(np.asarray(artifact["training_transformed"]))
         distances, _ = nearest.kneighbors(transformed)
         nearest_distance = distances[:, 0]
         outside_counts, outside_fields = cls._range_violations(metadata, frame)
         classes, reasons, normalized = cls._reliability(
-            metadata, std, nearest_distance, outside_counts
+            metadata, np.asarray(std), nearest_distance, outside_counts
         )
 
         result = pd.DataFrame(index=dataframe.index)
@@ -575,12 +593,10 @@ class DigitalTwinService:
         cls._validate_artifact(artifact)
         predictors = list(artifact["metadata"]["predictors"])
         frame = pd.DataFrame([{column: values.get(column) for column in predictors}])
-        row = cls.predict_dataframe(artifact, frame).iloc[0]
-        return row.to_dict()
+        return cls.predict_dataframe(artifact, frame).iloc[0].to_dict()
 
     @staticmethod
     def map_axis_candidates(artifact: dict[str, Any]) -> list[str]:
-        """Return numeric predictors with a finite, non-zero fitted range."""
         DigitalTwinService._validate_artifact(artifact)
         metadata = artifact["metadata"]
         ranges = metadata.get("numeric_training_ranges", {})
@@ -634,8 +650,6 @@ class DigitalTwinService:
                 rows.append(row)
         frame = pd.DataFrame(rows, columns=predictors)
         predictions = cls.predict_dataframe(artifact, frame)
-        # Explicit grid coordinates prevent reconstruction from unique values and
-        # therefore avoid shape failures when a field is nearly constant.
         predictions.insert(0, "grid_column", np.tile(np.arange(resolution), resolution))
         predictions.insert(0, "grid_row", np.repeat(np.arange(resolution), resolution))
         predictions.insert(0, y_field, grid_y.ravel(order="C"))
@@ -652,7 +666,6 @@ class DigitalTwinService:
         field: str,
         resolution: int = 100,
     ) -> pd.DataFrame:
-        """Generate a one-dimensional response curve for one varying predictor."""
         cls._validate_artifact(artifact)
         metadata = artifact["metadata"]
         if field not in cls.map_axis_candidates(artifact):
@@ -670,7 +683,6 @@ class DigitalTwinService:
         predictions.insert(0, field, values)
         predictions.attrs["curve_field"] = field
         return predictions
-
     @staticmethod
     def _single_figure(title: str) -> tuple[Figure, Any]:
         figure = Figure(figsize=(6.0, 6.0), constrained_layout=True)
@@ -941,6 +953,8 @@ class DigitalTwinService:
                 rows.append({
                     "created_at_utc": metadata.get("created_at_utc", ""),
                     "method": metadata.get("method", ""),
+                    "model_rank": metadata.get("model_rank", ""),
+                    "model_status": metadata.get("model_status", ""),
                     "response": metadata.get("response", ""),
                     "confidence_percent": metadata.get("confidence_percent", np.nan),
                     "observations": metadata.get("observations", ""),

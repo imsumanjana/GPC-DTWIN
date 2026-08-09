@@ -26,3 +26,8 @@ models/active_learning/*
 backups/
 logs/
 ui-check/
+release/*
+!release/.gitkeep
+reports/*
+!reports/.gitkeep
+

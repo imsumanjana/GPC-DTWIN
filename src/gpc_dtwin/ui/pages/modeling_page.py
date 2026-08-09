@@ -74,7 +74,7 @@ class ModelingPage(QWidget):
         self.predictor_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         controls_layout.addWidget(self.predictor_list, 1)
 
-        controls_layout.addWidget(QLabel("Algorithms"))
+        controls_layout.addWidget(QLabel("Candidate algorithms · all 7 benchmarked"))
         self.algorithm_list = QListWidget()
         self.algorithm_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.algorithm_list.setMaximumHeight(190)
@@ -286,12 +286,12 @@ class ModelingPage(QWidget):
             MODEL_PREDICTOR_COLUMNS,
             checked_items=set(MODEL_DEFAULT_PREDICTORS),
         )
-        self._fill_check_list(
-            self.algorithm_list,
-            self.service.algorithm_names(),
-            checked_items=set(self.service.algorithm_names()),
-            use_labels=False,
-        )
+        self.algorithm_list.clear()
+        for rank, algorithm in enumerate(self.service.algorithm_names(), start=1):
+            item = QListWidgetItem(f"{rank}. {algorithm}")
+            item.setData(Qt.ItemDataRole.UserRole, algorithm)
+            item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            self.algorithm_list.addItem(item)
         self.refresh_predictor_availability()
 
     def refresh_predictor_availability(self, *_args) -> None:
@@ -386,7 +386,7 @@ class ModelingPage(QWidget):
     def run_comparison(self) -> None:
         response = self.response_combo.currentData()
         predictors = [value for value in self._checked_values(self.predictor_list) if value != response]
-        algorithms = self._checked_values(self.algorithm_list)
+        algorithms = self.service.algorithm_names()
         if not response:
             return
         self.setCursor(Qt.CursorShape.WaitCursor)
@@ -400,11 +400,12 @@ class ModelingPage(QWidget):
             )
             self.current_result = result
             self.active_artifact = result.artifact
+            self.context.set_model_comparison(result)
             self._show_result(result)
             self._configure_prediction_inputs(result.artifact)
             self.tabs.setCurrentIndex(0)
             completion = (
-                f"Model comparison completed. {result.best_algorithm} ranked first by RMSE."
+                f"Model comparison completed. {result.best_algorithm} ranked first and is recommended for the Digital Twin."
             )
             if result.omitted_predictors:
                 count = len(result.omitted_predictors)

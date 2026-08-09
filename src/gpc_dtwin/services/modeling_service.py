@@ -9,44 +9,24 @@ import json
 from pathlib import Path
 import re
 from time import perf_counter
-from typing import Any, Callable
+from typing import Any
 
 import joblib
 import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
-from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import ExtraTreesRegressor, GradientBoostingRegressor, RandomForestRegressor
-from sklearn.impute import SimpleImputer
 from sklearn.inspection import permutation_importance
-from sklearn.linear_model import ElasticNet, LinearRegression, Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import GroupKFold, KFold, cross_val_predict
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.svm import SVR
 
 from gpc_dtwin import __version__
 from gpc_dtwin.chart_style import apply_chart_style
 from gpc_dtwin.columns import COLUMN_LABELS, MODEL_NUMERIC_PREDICTORS
+from gpc_dtwin.services.model_registry import (
+    MODEL_FACTORIES, algorithm_names, build_pipeline, build_preprocessor,
+)
 
-
-MODEL_FACTORIES: dict[str, Callable[[], Any]] = {
-    "Linear Regression": lambda: LinearRegression(),
-    "Ridge Regression": lambda: Ridge(alpha=1.0),
-    "Elastic Net": lambda: ElasticNet(alpha=0.03, l1_ratio=0.35, max_iter=20000, random_state=42),
-    "Support Vector Regression": lambda: SVR(kernel="rbf", C=25.0, epsilon=0.08, gamma="scale"),
-    "Random Forest": lambda: RandomForestRegressor(
-        n_estimators=180, min_samples_leaf=1, random_state=42, n_jobs=1
-    ),
-    "Gradient Boosting": lambda: GradientBoostingRegressor(
-        n_estimators=160, learning_rate=0.04, max_depth=2, random_state=42,
-        loss="huber"
-    ),
-    "Extra Trees": lambda: ExtraTreesRegressor(
-        n_estimators=180, min_samples_leaf=1, random_state=42, n_jobs=1
-    ),
-}
 
 REVIEW_STATES = {"REQUIRES_REVIEW", "CONFLICTING"}
 
@@ -72,7 +52,7 @@ class ModelingService:
 
     @staticmethod
     def algorithm_names() -> list[str]:
-        return list(MODEL_FACTORIES)
+        return algorithm_names()
 
     @staticmethod
     def _slug(value: str) -> str:
@@ -199,39 +179,13 @@ class ModelingService:
         return working, original_count - len(working), usable, omitted
 
     @staticmethod
-    def _preprocessor(predictors: list[str]) -> tuple[ColumnTransformer, list[str], list[str]]:
-        numeric = [column for column in predictors if column in MODEL_NUMERIC_PREDICTORS]
-        categorical = [column for column in predictors if column not in numeric]
-        transformers: list[tuple[str, Pipeline, list[str]]] = []
-        if numeric:
-            transformers.append((
-                "numeric",
-                Pipeline([
-                    ("imputer", SimpleImputer(strategy="median", keep_empty_features=True)),
-                    ("scale", StandardScaler()),
-                ]),
-                numeric,
-            ))
-        if categorical:
-            transformers.append((
-                "categorical",
-                Pipeline([
-                    ("imputer", SimpleImputer(strategy="constant", fill_value="Missing")),
-                    ("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
-                ]),
-                categorical,
-            ))
-        return ColumnTransformer(transformers=transformers, remainder="drop"), numeric, categorical
+    def _preprocessor(predictors: list[str]):
+        return build_preprocessor(predictors)
+
 
     @staticmethod
     def _pipeline(predictors: list[str], algorithm: str) -> Pipeline:
-        if algorithm not in MODEL_FACTORIES:
-            raise ValueError(f"Unsupported algorithm: {algorithm}")
-        preprocessor, _, _ = ModelingService._preprocessor(predictors)
-        return Pipeline([
-            ("preprocess", preprocessor),
-            ("model", MODEL_FACTORIES[algorithm]()),
-        ])
+        return build_pipeline(predictors, algorithm)
 
     @staticmethod
     def _cross_validation(working: pd.DataFrame, group_column: str):
@@ -243,13 +197,16 @@ class ModelingService:
             unique_groups = 0
         if groups is not None and unique_groups >= 3:
             folds = min(5, unique_groups)
-            return GroupKFold(n_splits=folds), groups, (
+            splitter = GroupKFold(n_splits=folds)
+            splits = list(splitter.split(working, groups=groups))
+            return splits, groups, (
                 f"Grouped {folds}-fold cross-validation by {COLUMN_LABELS.get(group_column, group_column)}"
             )
         folds = min(5, len(working))
         if folds < 2:
             raise ValueError("Insufficient observations for cross-validation.")
-        return KFold(n_splits=folds, shuffle=True, random_state=42), None, f"{folds}-fold cross-validation"
+        splitter = KFold(n_splits=folds, shuffle=True, random_state=42)
+        return list(splitter.split(working)), None, f"{folds}-fold cross-validation"
 
     @staticmethod
     def _mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
@@ -271,6 +228,124 @@ class ModelingService:
                 defaults[column] = None if values.empty else str(values.mode().iloc[0])
                 categories[column] = sorted(values.unique().tolist())
         return defaults, categories
+
+    @staticmethod
+    def _fold_metrics(y: np.ndarray, predicted: np.ndarray, splits) -> dict[str, float]:
+        rmses: list[float] = []
+        maes: list[float] = []
+        r2_values: list[float] = []
+        for _, test_index in splits:
+            truth = y[test_index]
+            estimate = predicted[test_index]
+            rmses.append(float(np.sqrt(mean_squared_error(truth, estimate))))
+            maes.append(float(mean_absolute_error(truth, estimate)))
+            if len(test_index) >= 2 and float(np.var(truth)) > 1e-12:
+                r2_values.append(float(r2_score(truth, estimate)))
+        return {
+            "cv_rmse_mean": float(np.mean(rmses)),
+            "cv_rmse_std": float(np.std(rmses, ddof=0)),
+            "cv_mae_mean": float(np.mean(maes)),
+            "cv_mae_std": float(np.std(maes, ddof=0)),
+            "cv_r2_mean": float(np.mean(r2_values)) if r2_values else float("nan"),
+            "cv_r2_std": float(np.std(r2_values, ddof=0)) if r2_values else float("nan"),
+        }
+
+    @staticmethod
+    def _assign_dynamic_status(rankings: pd.DataFrame) -> pd.DataFrame:
+        """Attach one-word, data-derived notes for the current validation run only.
+
+        The note deliberately combines relative RMSE/MAE, R² consistency, and fold-to-fold
+        RMSE variation.  It is never a fixed property of an algorithm.
+        """
+        table = rankings.copy()
+        if table.empty:
+            table["rmse_gap_percent"] = pd.Series(dtype=float)
+            table["mae_gap_percent"] = pd.Series(dtype=float)
+            table["cv_rmse_variation_percent"] = pd.Series(dtype=float)
+            table["status"] = pd.Series(dtype="string")
+            table["status_reason"] = pd.Series(dtype="string")
+            return table
+
+        leader_rmse = max(float(table.iloc[0]["rmse"]), 1e-12)
+        best_mae = max(float(pd.to_numeric(table["mae"], errors="coerce").min()), 1e-12)
+        best_r2 = float(pd.to_numeric(table["r2"], errors="coerce").max())
+
+        rmse_gaps: list[float] = []
+        mae_gaps: list[float] = []
+        variations: list[float] = []
+        statuses: list[str] = []
+        reasons: list[str] = []
+
+        for _, row in table.iterrows():
+            rank = int(row["rank"])
+            rmse = float(row["rmse"])
+            mae = float(row["mae"])
+            r2 = float(row["r2"])
+            rmse_gap = max((rmse / leader_rmse - 1.0) * 100.0, 0.0)
+            mae_gap = max((mae / best_mae - 1.0) * 100.0, 0.0)
+            rmse_mean = max(float(row.get("cv_rmse_mean", rmse)), 1e-12)
+            variation = max(float(row.get("cv_rmse_std", 0.0)) / rmse_mean * 100.0, 0.0)
+            r2_drop = max(best_r2 - r2, 0.0) if np.isfinite(r2) and np.isfinite(best_r2) else 0.0
+
+            if rank == 1:
+                status = "Recommended"
+                reason = (
+                    f"Current validation leader; fold RMSE variation {variation:.1f}%."
+                )
+            elif variation > 50.0:
+                status = "Uncertain"
+                reason = (
+                    f"High fold-to-fold RMSE variation ({variation:.1f}%); RMSE is "
+                    f"{rmse_gap:.1f}% above the leader."
+                )
+            elif rmse_gap >= 50.0 or (r2 < 0.0 and best_r2 >= 0.30):
+                status = "Weak"
+                reason = (
+                    f"RMSE is {rmse_gap:.1f}% above the leader; validation fit is materially weaker."
+                )
+            elif rmse_gap <= 5.0 and mae_gap <= 10.0 and variation <= 30.0:
+                status = "Competitive"
+                reason = (
+                    f"Within {rmse_gap:.1f}% RMSE and {mae_gap:.1f}% MAE of the best values; "
+                    f"fold variation {variation:.1f}%."
+                )
+            elif rmse_gap <= 20.0 and variation <= 15.0 and r2_drop <= 0.15:
+                status = "Stable"
+                reason = (
+                    f"Consistent across folds ({variation:.1f}% variation); RMSE is "
+                    f"{rmse_gap:.1f}% above the leader."
+                )
+            elif (rmse_gap <= 25.0 and mae_gap > 30.0) or (r2_drop > 0.30 and rmse_gap <= 30.0):
+                status = "Mixed"
+                reason = (
+                    f"Validation indicators disagree (RMSE gap {rmse_gap:.1f}%, MAE gap "
+                    f"{mae_gap:.1f}%, R² drop {r2_drop:.3f})."
+                )
+            elif rmse_gap <= 30.0 and variation <= 35.0:
+                status = "Moderate"
+                reason = (
+                    f"Acceptable but below stronger candidates; RMSE gap {rmse_gap:.1f}% and "
+                    f"fold variation {variation:.1f}%."
+                )
+            else:
+                status = "Mixed"
+                reason = (
+                    f"No stronger classification from current metrics (RMSE gap {rmse_gap:.1f}%, "
+                    f"MAE gap {mae_gap:.1f}%, fold variation {variation:.1f}%)."
+                )
+
+            rmse_gaps.append(rmse_gap)
+            mae_gaps.append(mae_gap)
+            variations.append(variation)
+            statuses.append(status)
+            reasons.append(reason)
+
+        table["rmse_gap_percent"] = rmse_gaps
+        table["mae_gap_percent"] = mae_gaps
+        table["cv_rmse_variation_percent"] = variations
+        table["status"] = statuses
+        table["status_reason"] = reasons
+        return table
 
     def compare_models(
         self,
@@ -305,10 +380,7 @@ class ModelingService:
         for algorithm in algorithms:
             pipeline = self._pipeline(predictors, algorithm)
             started = perf_counter()
-            if groups is None:
-                predicted = cross_val_predict(pipeline, x, y, cv=cv)
-            else:
-                predicted = cross_val_predict(pipeline, x, y, cv=cv, groups=groups)
+            predicted = cross_val_predict(pipeline, x, y, cv=cv)
             elapsed = perf_counter() - started
             rmse = float(np.sqrt(mean_squared_error(y, predicted)))
             mae = float(mean_absolute_error(y, predicted))
@@ -317,6 +389,7 @@ class ModelingService:
             slug = self._slug(algorithm)
             prediction_table[f"{slug}_predicted"] = predicted
             prediction_table[f"{slug}_residual"] = y - predicted
+            fold_metrics = self._fold_metrics(y, predicted, cv)
             ranking_rows.append({
                 "algorithm": algorithm,
                 "rmse": rmse,
@@ -324,12 +397,14 @@ class ModelingService:
                 "r2": r2,
                 "mape_percent": mape,
                 "fit_seconds": float(elapsed),
+                **fold_metrics,
             })
 
         rankings = pd.DataFrame(ranking_rows).sort_values(
             ["rmse", "mae", "algorithm"], ascending=[True, True, True]
         ).reset_index(drop=True)
         rankings.insert(0, "rank", np.arange(1, len(rankings) + 1))
+        rankings = self._assign_dynamic_status(rankings)
         best_algorithm = str(rankings.iloc[0]["algorithm"])
         best_pipeline = self._pipeline(predictors, best_algorithm)
         best_pipeline.fit(x, y)
@@ -372,8 +447,10 @@ class ModelingService:
             "observations": len(working),
             "excluded_records": excluded_records,
             "include_review_records": bool(include_review_records),
+            "group_column": group_column,
             "cv_method": cv_method,
             "metrics": best_metrics,
+            "ranking": rankings.replace({np.nan: None}).to_dict(orient="records"),
         }
         artifact = {"pipeline": best_pipeline, "metadata": metadata}
 

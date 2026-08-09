@@ -1,3 +1,12 @@
+IMPLEMENTATION NOTE — GPC-DTwin v1.2.0
+This document is the original development/research plan and is retained for historical design context.
+The implemented v1.2.0 model architecture supersedes earlier model-specific Digital Twin proposals:
+Predictive Modelling benchmarks seven shared regression algorithms, the matching ranking leader is
+recommended by default in Digital Twin, all seven remain selectable, uncertainty is calibrated from
+out-of-fold residual behaviour plus domain support, and 3D Response Surface consumes the active twin
+directly. The former synthetic specimen field is replaced by physics-informed mechanics/diffusion fields.
+See MODELING.md, DIGITAL_TWIN.md, THREE_D_EXPLORER.md, and ARCHITECTURE.md for the current design.
+
 DETAILED DEVELOPMENT AND RESEARCH PLAN
 Python–PyQt6-Based Digital Twin, Simulation, Optimisation and 3D Visualisation Platform
 for Geopolymer Concrete

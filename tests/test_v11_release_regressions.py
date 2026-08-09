@@ -34,7 +34,7 @@ def test_response_specific_blank_predictor_is_adapted():
             "sf_percent_numeric",
             "aas_b_ratio",
         ],
-        method="Forest Ensemble",
+        method="Random Forest",
         population_size=16,
         generations=1,
         uncertainty_weight=0.25,

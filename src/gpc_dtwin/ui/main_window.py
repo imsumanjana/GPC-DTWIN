@@ -61,7 +61,7 @@ class MainWindow(QMainWindow):
         ),
         ("Predictive Models", "Cross-validated model comparison, prediction, and model storage"),
         ("Digital Twin", "Uncertainty-aware prediction, calibration, reliability, and response maps"),
-        ("3D Explorer", "Interactive response surfaces, uncertainty landscapes, and specimen fields"),
+        ("3D Explorer", "Active-twin response surfaces and physics-informed specimen fields"),
         ("NDT & Durability", "NDT fusion, exposure profiles, and uncertainty-aware durability estimates"),
         ("Optimization", "Pareto trade-offs, engineering constraints, and inverse material design"),
         ("Active Learning", "Uncertainty-guided experiment selection and closed-loop model updates"),

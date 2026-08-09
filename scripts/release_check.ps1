@@ -17,4 +17,5 @@ if ($LASTEXITCODE -ne 0) { throw "Test suite failed." }
 if ($LASTEXITCODE -ne 0) { throw "Interface check failed." }
 & $Python -m gpc_dtwin.app --self-check
 if ($LASTEXITCODE -ne 0) { throw "Application check failed." }
-Write-Host "GPC-DTwin v1.1.1 release checks passed." -ForegroundColor Green
+$Version = (Get-Content (Join-Path $RepoRoot "VERSION") -Raw).Trim()
+Write-Host "GPC-DTwin v$Version release checks passed." -ForegroundColor Green

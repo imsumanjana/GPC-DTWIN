@@ -9,6 +9,16 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHON_VERSION: "3.12"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  QT_OPENGL: software
+  QT_QUICK_BACKEND: software
+  OMP_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+  NUMEXPR_NUM_THREADS: "1"
+
 jobs:
   build-macos-arm64:
     name: Build macOS ARM64
@@ -18,64 +28,95 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: Read application version
+        shell: bash
+        run: |
+          APP_VERSION="$(tr -d '[:space:]' < VERSION)"
+          if [[ -z "$APP_VERSION" ]]; then
+            echo "VERSION file is empty."
+            exit 1
+          fi
+          echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
+          echo "Application version: $APP_VERSION"
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
-          cache: "pip"
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-lock.txt
 
-      - name: Install application dependencies
+      - name: Install pinned release dependencies
+        shell: bash
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install -e .
-          python -m pip install --upgrade pyinstaller
+          python -m pip install -r requirements-lock.txt
+          python -m pip install --no-deps .
+          python -m pip check
 
-      - name: Confirm architecture
+      - name: Verify release dependency stack
+        shell: bash
         run: |
           python --version
-          python -c "import platform; print(platform.machine())"
+          python - <<'PY'
+          import platform
+          import numpy
+          import pandas
+          import matplotlib
+          import scipy
+          import sklearn
+          import joblib
+          import PyInstaller
+          from PyQt6.QtCore import PYQT_VERSION_STR, QT_VERSION_STR, qVersion
+          from PyQt6 import QtCore, QtGui, QtWidgets
+
+          print("Architecture:", platform.machine())
+          print("NumPy:", numpy.__version__)
+          print("pandas:", pandas.__version__)
+          print("Matplotlib:", matplotlib.__version__)
+          print("SciPy:", scipy.__version__)
+          print("scikit-learn:", sklearn.__version__)
+          print("joblib:", joblib.__version__)
+          print("PyInstaller:", PyInstaller.__version__)
+          print("PyQt:", PYQT_VERSION_STR)
+          print("Compiled Qt:", QT_VERSION_STR)
+          print("Runtime Qt:", qVersion())
+
+          if platform.machine() != "arm64":
+              raise SystemExit("Expected an arm64 macOS runner.")
+          if QT_VERSION_STR != qVersion():
+              raise SystemExit("Compiled and runtime Qt versions do not match.")
+          PY
           sw_vers
 
+      - name: Run service and application checks
+        shell: bash
+        run: |
+          export QT_QPA_PLATFORM=offscreen
+          python -m pytest -m "not gui"
+          python -m gpc_dtwin.app --self-check
+
       - name: Create macOS icon
+        shell: bash
         run: |
           rm -rf resources/GPC-DTwin.iconset
           mkdir -p resources/GPC-DTwin.iconset
 
-          sips -z 16 16 resources/GPC-DTwin.png \
-            --out resources/GPC-DTwin.iconset/icon_16x16.png
+          sips -z 16 16 resources/GPC-DTwin.png --out resources/GPC-DTwin.iconset/icon_16x16.png
+          sips -z 32 32 resources/GPC-DTwin.png --out resources/GPC-DTwin.iconset/icon_16x16@2x.png
+          sips -z 32 32 resources/GPC-DTwin.png --out resources/GPC-DTwin.iconset/icon_32x32.png
+          sips -z 64 64 resources/GPC-DTwin.png --out resources/GPC-DTwin.iconset/icon_32x32@2x.png
+          sips -z 128 128 resources/GPC-DTwin.png --out resources/GPC-DTwin.iconset/icon_128x128.png
+          sips -z 256 256 resources/GPC-DTwin.png --out resources/GPC-DTwin.iconset/icon_128x128@2x.png
+          sips -z 256 256 resources/GPC-DTwin.png --out resources/GPC-DTwin.iconset/icon_256x256.png
+          sips -z 512 512 resources/GPC-DTwin.png --out resources/GPC-DTwin.iconset/icon_256x256@2x.png
+          sips -z 512 512 resources/GPC-DTwin.png --out resources/GPC-DTwin.iconset/icon_512x512.png
+          sips -z 1024 1024 resources/GPC-DTwin.png --out resources/GPC-DTwin.iconset/icon_512x512@2x.png
 
-          sips -z 32 32 resources/GPC-DTwin.png \
-            --out resources/GPC-DTwin.iconset/icon_16x16@2x.png
-
-          sips -z 32 32 resources/GPC-DTwin.png \
-            --out resources/GPC-DTwin.iconset/icon_32x32.png
-
-          sips -z 64 64 resources/GPC-DTwin.png \
-            --out resources/GPC-DTwin.iconset/icon_32x32@2x.png
-
-          sips -z 128 128 resources/GPC-DTwin.png \
-            --out resources/GPC-DTwin.iconset/icon_128x128.png
-
-          sips -z 256 256 resources/GPC-DTwin.png \
-            --out resources/GPC-DTwin.iconset/icon_128x128@2x.png
-
-          sips -z 256 256 resources/GPC-DTwin.png \
-            --out resources/GPC-DTwin.iconset/icon_256x256.png
-
-          sips -z 512 512 resources/GPC-DTwin.png \
-            --out resources/GPC-DTwin.iconset/icon_256x256@2x.png
-
-          sips -z 512 512 resources/GPC-DTwin.png \
-            --out resources/GPC-DTwin.iconset/icon_512x512.png
-
-          sips -z 1024 1024 resources/GPC-DTwin.png \
-            --out resources/GPC-DTwin.iconset/icon_512x512@2x.png
-
-          iconutil -c icns \
-            resources/GPC-DTwin.iconset \
-            -o resources/GPC-DTwin.icns
+          iconutil -c icns resources/GPC-DTwin.iconset -o resources/GPC-DTwin.icns
 
       - name: Build GPC-DTwin application
+        shell: bash
         run: |
           rm -rf build dist release dmg-root
 
@@ -88,36 +129,74 @@ jobs:
             --icon "resources/GPC-DTwin.icns" \
             --osx-bundle-identifier "com.sumanjana.gpcdtwin" \
             --target-arch arm64 \
+            --paths "src" \
+            --add-data "data/reference:data/reference" \
+            --add-data "data/templates:data/templates" \
             --add-data "resources:resources" \
-            "src/gpc_dtwin/__main__.py"
+            --add-data "docs:docs" \
+            --add-data "README.md:." \
+            --add-data "RELEASE_NOTES.md:." \
+            --add-data "VERSION:." \
+            --add-data "COPYRIGHT.txt:." \
+            --add-data "LICENSE-NOTICE.txt:." \
+            --collect-all matplotlib \
+            --collect-all sklearn \
+            --collect-submodules scipy \
+            "src/gpc_dtwin/app.py"
+
+      - name: Validate frozen macOS application
+        shell: bash
+        run: |
+          APP="dist/GPC-DTwin.app"
+          BIN="$APP/Contents/MacOS/GPC-DTwin"
+
+          test -d "$APP"
+          test -x "$BIN"
+
+          echo "Application bundle size:"
+          du -sh "$APP"
+          echo "Largest bundle components:"
+          du -sh "$APP"/Contents/* | sort -h
+
+          export QT_QPA_PLATFORM=offscreen
+          "$BIN" --self-check
+
+          # Confirm that the bundled runtime contains the application resources
+          # required at first launch. The self-check above also validates these.
+          find "$APP/Contents" -name "GPC_Reference_Dataset.csv" -print -quit | grep -q .
+          find "$APP/Contents" -name "GPC_Dataset_Template.csv" -print -quit | grep -q .
+
+          # PyQt6 must carry the Cocoa platform plugin in the frozen ARM64 app.
+          find "$APP/Contents" -name "libqcocoa.dylib" -print -quit | grep -q .
 
       - name: Create DMG
+        shell: bash
         run: |
           mkdir -p dmg-root release
-
           cp -R "dist/GPC-DTwin.app" "dmg-root/GPC-DTwin.app"
           ln -s /Applications "dmg-root/Applications"
 
           hdiutil create \
-            -volname "GPC-DTwin 1.1.5" \
+            -volname "GPC-DTwin ${APP_VERSION}" \
             -srcfolder "dmg-root" \
             -format UDZO \
             -ov \
-            "release/GPC-DTwin-v1.1.5-macOS-arm64.dmg"
+            "release/GPC-DTwin-v${APP_VERSION}-macOS-arm64.dmg"
 
-      - name: Generate SHA-256 checksum
+      - name: Validate DMG and generate checksum
+        shell: bash
         run: |
-          cd release
-          shasum -a 256 \
-            "GPC-DTwin-v1.1.5-macOS-arm64.dmg" \
-            > "GPC-DTwin-v1.1.5-macOS-arm64.sha256.txt"
+          DMG="release/GPC-DTwin-v${APP_VERSION}-macOS-arm64.dmg"
+          hdiutil verify "$DMG"
+          ls -lh "$DMG"
+          shasum -a 256 "$DMG" > "release/GPC-DTwin-v${APP_VERSION}-macOS-arm64.sha256.txt"
 
       - name: Upload macOS release files
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
-          name: GPC-DTwin-v1.1.5-macOS-arm64
+          name: GPC-DTwin-v${{ env.APP_VERSION }}-macOS-arm64
           path: |
-            release/GPC-DTwin-v1.1.5-macOS-arm64.dmg
-            release/GPC-DTwin-v1.1.5-macOS-arm64.sha256.txt
+            release/GPC-DTwin-v${{ env.APP_VERSION }}-macOS-arm64.dmg
+            release/GPC-DTwin-v${{ env.APP_VERSION }}-macOS-arm64.sha256.txt
           if-no-files-found: error
           compression-level: 0

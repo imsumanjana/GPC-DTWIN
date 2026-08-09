@@ -1,113 +1,58 @@
-# GPC-DTwin v1.1.5 Validation Summary
+# GPC-DTwin v1.2.0 Validation Summary
 
 ## Scope
 
-This release adds persistent publication-graphics presets, chart/workspace/application style scopes,
-advanced legend placement, export preview, enhanced tabbed figure management, square scrollable
-Digital Twin maps, response-specific Optimization predictor adaptation, and native Windows shutdown
-safeguards.
+Version 1.2.0 integrates predictive ranking, Digital Twin selection, 3D response visualization, and physics-informed specimen calculations while retaining the existing data, analytics, NDT, durability, optimization, active-learning, reporting, and publication-graphics workspaces.
 
-## Packaging-environment checks
+## Core architecture checks
 
-- 79 Python source and test files passed syntax compilation.
-- 78 non-GUI automated tests passed across the complete service and source-validation suite.
-- The PyQt-dependent database-context and GUI checks remain included for the Windows environment.
-- Built-in preset independence and expected preset behavior are tested.
-- Chart-style JSON round trips include all 1.1.1 fields.
-- Outside and custom legend placement paths are tested.
-- Export-profile tests verify 6 × 6 inches, 600 dpi, and 3600 × 3600 raster dimensions.
-- Response-map tests verify explicit grid dimensions, 100 × 100 generation, and one-dimensional fallback.
-- A regression test verifies that AAS:B is omitted only from response families where it is blank,
-  without cancelling the complete Optimization search.
-- Source checks verify that no rule is drawn above tab rows and that the lower baseline is present.
-- Source checks verify square fixed response-map canvases with horizontal and vertical scrollbars.
-- Source checks verify timer-based chart discovery, orderly shutdown, software rendering, matching
-  PyQt/Qt versions, the pinned dependency stack, single-worker ensembles, fault diagnostics, and
-  access-violation reporting.
-- Response-map, modelling, NDT, durability, Optimization, active-learning, reporting, and 3D services
-  retain automated coverage.
+- Seven candidate algorithms are defined once in `services/model_registry.py`.
+- Predictive Modelling evaluates all seven with shared cross-validation folds.
+- Ranking output includes overall error, fold-level variability, rank, dynamic one-word status, and status explanation.
+- Rank #1 is always marked `Recommended` for that specific comparison.
+- Digital Twin receives a matching Prediction result through `ApplicationContext` and defaults to its ranking leader.
+- All seven ranked algorithms remain manually selectable.
+- Dataset/status changes invalidate stale comparison/twin state.
+- 3D Response Surface consumes the active Digital Twin artifact directly rather than fitting another surrogate.
 
-## Windows interface checks included
+## Digital Twin checks
 
-The Windows release check requires the installed PyQt6 environment and verifies:
+- New twins use any shared prediction model rather than the former GP/Forest-only new-build path.
+- Empirical uncertainty and intervals are derived from out-of-fold residual behavior for every supported algorithm.
+- Distance adjustment, nearest-training distance, numeric range violations, and A/B/C/D reliability are retained.
+- Scenario, batch, response-map, persistence, and calibration-figure paths are covered by service tests.
+- Legacy Gaussian Process / Forest Ensemble artifacts retain load/prediction compatibility.
 
-- all thirteen workspaces open successfully;
-- all workspaces remain scrollable;
-- chart canvases expose their palette icon;
-- figure tabs are reorderable and do not stretch unnecessarily;
-- square response-map hosts retain equal width and height;
-- scrollbars appear when a square map exceeds the available viewport;
-- figure groups expose expand, current-export, and export-all controls;
-- chart canvases retain readable minimum dimensions;
-- screenshots can be captured at 1024 × 720, 1366 × 768, and 1920 × 1080;
-- the application health check confirms matching compiled and runtime Qt versions;
-- the application closes without a native access-violation exit.
+## Physics-informed specimen checks
 
-Run the complete Windows validation with:
+- Compression cube: nominal `P/A` stress/utilisation is deterministic and spatially uniform under the stated ideal loading assumption.
+- Splitting cylinder: nominal `2P/(πLD)` relation is implemented on a cylindrical geometry.
+- Flexural beam: third-point moment distribution and `σ = My/I` produce the expected neutral axis and tension/compression field.
+- Acid cube: finite-slab Fickian penetration produces stronger surface than core exposure for positive time; global strength loss can be calibrated to matching experimental residual-strength data.
+- Every specimen result includes geometry, dimensions, field source, capacity source, supporting record count, and modelling assumptions.
+- The former sine-wave synthetic specimen field is removed.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\release_check.ps1
-```
+## Packaging checks
 
-## Copyright
+### Windows
 
-Copyright © 2026 Dr. Suman Jana. All rights reserved.
+The Windows PyInstaller build continues to include bundled reference/template data, resources, documentation, copyright/licence files, Matplotlib, scikit-learn, and SciPy submodules using the pinned release environment.
 
-ORCID: https://orcid.org/0000-0002-9850-2169
+### macOS ARM64
 
+The GitHub Actions workflow now:
 
-## 1.1.1 Qt compatibility regression
+- uses `macos-26` ARM64 and Python 3.12;
+- installs `requirements-lock.txt` and runs `pip check`;
+- verifies ARM64 and matching PyQt/Qt versions;
+- runs non-GUI tests and source self-check;
+- builds from `src/gpc_dtwin/app.py` with `src` on the PyInstaller path;
+- bundles `data/reference`, `data/templates`, `resources`, `docs`, copyright and licence notice;
+- collects required Matplotlib/scikit-learn/SciPy content;
+- runs the frozen application self-check before DMG creation;
+- verifies the DMG and writes SHA-256 output;
+- uploads with `actions/upload-artifact@v6`.
 
-- No source reference to `QEvent.Type.Destroy`.
-- Supported chart repositioning events are resolved with `getattr`.
-- Deleted Qt wrappers are handled without propagating runtime exceptions.
-- Windows GUI smoke execution is retained in `release_check.ps1`.
+## Release test baseline
 
-
-## 1.1.2 workspace hierarchy checks
-
-- All thirteen workspace constructors were checked for duplicate direct page headers.
-- The main top bar remains the sole workspace title and subtitle.
-- The tab widget frame has no top rule.
-- The tab bar retains one lower baseline and the selected-tab accent.
-- The Windows GUI smoke test checks that no direct `SectionHeader` remains on a workspace root.
-
-
-## 1.1.3 Data Explorer consolidation
-
-- Ten primary workspaces are created.
-- The Data Explorer contains four tabs: records, quality, visual analysis, and statistical analysis.
-- Sidebar duplicates for the three merged pages are absent.
-- Existing navigation settings are migrated from the former thirteen-page layout.
-
-## 1.1.3 predictive-model correction
-
-- Response-incompatible predictors are identified from response-overlapping rows.
-- Unavailable fields are omitted without failing a valid model comparison.
-- Omitted predictors are reported in result and artifact metadata.
-- Predictors with valid overlap remain available for grouped cross-validation.
-
-
-## 1.1.4 tab and toolbar checks
-
-- Global tab styling contains no full-width tab-bar border.
-- The active-tab accent remains available.
-- Compact toolbars use one horizontal layout and horizontal overflow scrolling.
-- Icon actions expose tooltips and accessible names.
-- Six major analytical workspace modules use the compact toolbar.
-
-## 1.1.5 regression and field-compatibility checks
-
-- Grouped regression accepts the group identifier as a predictor without creating a two-dimensional group array.
-- Response-incompatible acid, mass, and exposure fields are omitted from mechanical-strength regression.
-- Digital Twin builds continue with compatible predictors and report omitted fields.
-- Active-learning and durability workflows inherit the same response-aware exclusion policy.
-- Warning and metadata paths preserve the list of omitted parameters.
-
-## 1.1.5 figure-export quality checks
-
-- Supported quality values are exactly 150, 300, 600, 1200, and 2400 dpi.
-- Export profiles preserve a 6 × 6 inch square canvas at every quality.
-- Raster pixel dimensions scale from 900 × 900 to 14400 × 14400.
-- All interactive page-level figure actions route through the quality/preview dialog.
-- Batch figure-tab export uses one selected DPI for every exported tab.
+Service tests cover predictive modelling, Digital Twin, 3D/physics, Active Learning, NDT/durability, optimization/inverse design, reporting, storage, analytics, statistics, export, and release-source regressions. GUI-marked tests remain available for environments with a suitable Qt display/offscreen configuration.

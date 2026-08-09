@@ -1,45 +1,95 @@
 # 3D Explorer
 
-The 3D Explorer provides two complementary views of compatible geopolymer-concrete data.
+The 3D Explorer now has two deliberately different scientific roles:
 
-## Response surface
+1. **Response Surface** — visualization of the active Digital Twin in predictor/design space;
+2. **Physics-Informed Specimen** — theory-based visualization in physical specimen coordinates.
 
-The response-surface view fits an uncertainty-aware surrogate model and evaluates it across two
-selected numeric variables. Available surface modes are:
+## Response Surface
+
+The Response Surface does **not train a new surrogate**. It requires an active Digital Twin and evaluates that exact artifact over two selected numeric axes. The header reports the active twin response, selected algorithm, prediction rank/status, and confidence level.
+
+Available surface modes are:
 
 - Estimated response
 - Relative uncertainty
 - Prediction interval width
 - Reliability landscape
 
-The fitted grid can include observation overlays, a surface mesh, and a contour projection.
-Camera presets and manual elevation and azimuth controls are provided. Grid data can be exported
-as CSV, and figures can be exported as PNG, PDF, SVG, or TIFF.
+The grid can include observation overlays, a surface mesh, and a contour projection. Camera presets and manual elevation/azimuth controls are provided. Grid data can be exported as CSV and figures can be exported using the common high-resolution figure engine.
 
 ### Reliability interpretation
 
-- **A**: close to available observations with low uncertainty
-- **B**: supported with moderate uncertainty
-- **C**: limited nearby support
-- **D**: outside the fitted range or weakly supported
+- **A** — close to available observations with low uncertainty;
+- **B** — supported with moderate uncertainty;
+- **C** — limited nearby support;
+- **D** — outside the fitted range or weakly supported.
 
-The displayed surface is a model estimate. Reliability and uncertainty should be considered before
-using a region for material selection.
+A high predicted response should therefore be considered together with uncertainty and reliability rather than interpreted as an optimum by itself.
 
-## Specimen field
+## Physics-Informed Specimen
 
-The specimen-field view creates a normalized field inside a 150 mm cube using aggregate property
-values for the selected mix. It supports full-volume, half-volume, center-slice, and octant-cutaway
-views.
+The old sine-wave/normalized synthetic cube has been removed. Specimen fields are now calculated from explicit mechanics or transport theory and carry provenance stating how the field was produced.
 
-The field is an estimated visual representation. It is not a spatial scan, internal tomography result,
-or measured crack map. Coordinate-based NDT or imaging data are required for a measured internal
-field.
+### Compression cube
 
-## Recommended use
+Geometry: 150 × 150 × 150 mm cube.
 
-1. Review data quality before fitting a surface.
-2. Select variables with adequate numeric coverage.
-3. Prefer regions with reliability A or B.
-4. Compare estimated response and uncertainty surfaces together.
-5. Export the grid when independent calculations or reporting are required.
+Available fields:
+
+- nominal applied compressive stress;
+- compressive stress utilisation;
+- capacity margin.
+
+The first implementation deliberately uses ideal concentric uniaxial loading, so nominal `P/A` stress is spatially uniform. It does not invent non-uniform stress without a stated boundary/contact model.
+
+### Splitting tensile cylinder
+
+Geometry: 150 mm diameter × 300 mm length cylinder.
+
+Available fields:
+
+- nominal splitting tensile stress;
+- nominal tensile utilisation.
+
+The calculation uses the standard specimen-level relation `f_t = 2P/(πLD)`. It is explicitly labelled as a nominal field and is not presented as a full elastic-contact/Hondros reconstruction.
+
+### Flexural beam
+
+Geometry: 100 × 100 × 500 mm beam with 400 mm support span and symmetric third-point loading.
+
+Available fields:
+
+- longitudinal bending stress;
+- tensile utilisation;
+- compressive utilisation;
+- flexural failure index.
+
+The field is calculated from the bending moment distribution and `σ = My/I`. This produces a physically meaningful tensile/compressive gradient and neutral axis.
+
+### Acid degradation cube
+
+Geometry: 150 × 150 × 150 mm cube.
+
+Available fields:
+
+- acid penetration;
+- damage index;
+- residual strength;
+- strength retention.
+
+Penetration is calculated using a finite-slab Fickian diffusion solution. The effective diffusivity is an explicit user/model assumption. When matching initial and acid-exposed strength records are available, the global degradation magnitude is calibrated so the volume-average strength retention agrees with the experiment. The internal penetration profile remains a theory-calculated field, not a measured tomography result.
+
+## Capacity source and field provenance
+
+Bulk capacity can come from the active Digital Twin when its response matches the selected specimen analysis. Otherwise a mix-level experimental mean is used. Every specimen result reports:
+
+- geometry and dimensions;
+- capacity value and capacity source;
+- field source;
+- number of supporting records;
+- modelling assumptions.
+
+Typical provenance labels include **Theory calculated**, **Theory + Digital Twin**, and **Diffusion theory + experimentally calibrated global strength loss**.
+
+No internal CT, voxel, crack, or spatial NDT measurement is claimed unless such coordinate-resolved measurements are actually imported in a future workflow.

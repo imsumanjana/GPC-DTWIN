@@ -1,14 +1,14 @@
 VSVersionInfo(
-  ffi=FixedFileInfo(filevers=(1, 1, 5, 0), prodvers=(1, 1, 5, 0), mask=0x3f,
+  ffi=FixedFileInfo(filevers=(1, 2, 0, 0), prodvers=(1, 2, 0, 0), mask=0x3f,
     flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),
   kids=[StringFileInfo([StringTable('040904B0', [
     StringStruct('CompanyName', 'Dr. Suman Jana'),
     StringStruct('FileDescription', 'GPC-DTwin Materials Analytics'),
-    StringStruct('FileVersion', '1.1.5'),
+    StringStruct('FileVersion', '1.2.0'),
     StringStruct('InternalName', 'GPC-DTwin'),
     StringStruct('LegalCopyright', 'Copyright © 2026 Dr. Suman Jana. All rights reserved.'),
     StringStruct('OriginalFilename', 'GPC-DTwin.exe'),
     StringStruct('ProductName', 'GPC-DTwin'),
-    StringStruct('ProductVersion', '1.1.5')])]),
+    StringStruct('ProductVersion', '1.2.0')])]),
   VarFileInfo([VarStruct('Translation', [1033, 1200])])]
 )

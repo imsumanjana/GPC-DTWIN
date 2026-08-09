@@ -775,7 +775,7 @@ class NDTDurabilityService:
         dataframe: pd.DataFrame,
         response: str = "residual_compressive_strength_mpa",
         predictors: list[str] | None = None,
-        method: str = "Gaussian Process",
+        method: str = "Random Forest",
         confidence_percent: float = 95.0,
         include_review_records: bool = False,
     ) -> TwinBuildResult:

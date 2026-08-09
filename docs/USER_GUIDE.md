@@ -19,8 +19,23 @@ The selected theme, last workspace, sidebar state, and window geometry are prese
 3. Run Quality Check and review critical, warning, and information findings.
 4. Update verification states where appropriate.
 5. Use Visual Analytics and Statistical Analysis for exploratory work.
-6. Use Predictive Models, Digital Twin, NDT & Durability, Optimization, and Active Learning as required.
-7. Use Reports & Provenance to create a report, manifest, or reproducibility bundle.
+6. Run **Predictive Models** for the response/predictor combination that will feed the Digital Twin.
+7. Open **Digital Twin**; rank #1 is recommended automatically and all seven ranked models remain selectable.
+8. Use **3D Explorer** to visualize the active twin in response space or calculate a physics-informed specimen field.
+9. Use NDT & Durability, Optimization, and Active Learning as required.
+10. Use Reports & Provenance to create a report, manifest, or reproducibility bundle.
+
+
+## Prediction → Digital Twin → 3D workflow
+
+1. In Predictive Models, choose a response and compatible predictors and run the seven-model comparison.
+2. Review RMSE/MAE/R², fold variability, model rank, and the dynamic one-word status.
+3. Open Digital Twin with the same response and effective predictor set. The ranking leader is selected as **Recommended**.
+4. Keep the recommended model or manually choose another ranked model. Build the twin and review uncertainty, interval coverage, nearest-data distance, range checks, and reliability.
+5. Open 3D Explorer. Response Surface uses that same active twin; it does not train a second model.
+6. Use Physics-Informed Specimen for compression, splitting tensile, flexural, or acid-degradation fields. Read the field-source/capacity-source statement before interpreting the plot.
+
+If the dataset is replaced, appended, restored, or verification states change, the ranking and active twin are invalidated so stale models cannot silently propagate.
 
 ## Backup and restore
 

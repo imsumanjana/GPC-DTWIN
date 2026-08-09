@@ -26,6 +26,8 @@ def test_model_comparison_prediction_and_persistence(tmp_path):
     assert len(result.rankings) == 4
     assert result.best_algorithm in set(result.rankings["algorithm"])
     assert result.rankings.iloc[0]["rmse"] >= 0
+    assert result.rankings.iloc[0]["status"] == "Recommended"
+    assert {"cv_rmse_mean", "cv_rmse_std", "status", "status_reason"}.issubset(result.rankings.columns)
     assert len(result.predictions) == 20
     assert not result.feature_influence.empty
 

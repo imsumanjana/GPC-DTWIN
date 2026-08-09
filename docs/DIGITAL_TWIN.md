@@ -1,45 +1,78 @@
 # Digital Twin
 
-The Digital Twin workspace creates surrogate response models with uncertainty bounds and
-training-domain checks.
+The Digital Twin workspace converts the validated predictive-model ranking into an **uncertainty-aware, domain-aware material-response model**. It no longer maintains a separate Gaussian-Process/Forest-only model family.
+
+## Required Predictive Modelling result
+
+Before a new twin can be built, run Predictive Modelling for the same:
+
+- response;
+- effective predictors;
+- active dataset;
+- review-record policy;
+- grouping configuration.
+
+The Digital Twin model selector is populated from that ranking. Rank #1 is selected automatically and shown as **Recommended**. The user can override the recommendation and select any of the other six models; its rank and dynamic status remain visible.
+
+## What the twin adds to the point predictor
+
+For the selected ranked algorithm the twin refits the shared model pipeline and adds:
+
+1. **Cross-validated empirical uncertainty** from out-of-fold residuals;
+2. **Prediction intervals** at the selected confidence level;
+3. **Distance adjustment** when a requested point is remote from observed training cases;
+4. **Nearest-training distance** in transformed predictor space;
+5. **Outside-range detection** for numeric predictors;
+6. **A/B/C/D reliability classification** combining uncertainty and experimental support.
+
+The interval implementation is algorithm-independent, so Linear Regression, Ridge, Elastic Net, SVR, Random Forest, Gradient Boosting, and Extra Trees can all be used as the prediction engine.
 
 ## Build and calibrate
 
-Choose a response, predictor fields, a twin method, and a confidence level. Calibration uses
-grouped cross-validation by mix whenever enough mix groups are available. Reported metrics include
-RMSE, MAE, R², interval coverage, mean interval width, normalized RMSE, and calibration gap.
+Calibration uses grouped cross-validation by mix whenever enough mix groups are available. Reported outputs include:
 
-## Prediction
+- selected algorithm, prediction rank, and dynamic status;
+- RMSE, MAE, and R²;
+- empirical interval coverage;
+- mean interval width;
+- normalized RMSE;
+- calibration gap;
+- number of usable observations.
+
+The calibration table retains observed response, out-of-fold predicted mean, residual, prediction standard deviation, lower and upper bounds, interval width, and whether the observation falls within the interval.
+
+## Scenario and batch prediction
 
 Single-scenario and batch outputs include:
 
-- estimated response,
-- prediction uncertainty,
-- lower and upper bounds,
-- relative uncertainty,
-- nearest-data distance,
-- outside-range fields,
-- reliability class A–D,
-- a plain-language reliability note.
+- estimated response;
+- prediction uncertainty;
+- lower and upper bounds;
+- interval width and relative uncertainty;
+- nearest-data distance;
+- outside-range count and fields;
+- reliability class A–D;
+- plain-language reliability reason.
 
-A means close support with low uncertainty. D indicates extrapolation, remote support, or high
-uncertainty. Reliability classes are decision-support indicators and do not replace physical testing.
+A indicates close experimental support with comparatively low uncertainty. D indicates extrapolation, remote support, or high uncertainty. Reliability is a decision-support indicator and does not replace laboratory testing.
 
 ## Response maps
 
-Response maps vary two numeric predictors across their fitted ranges while holding all other
-predictors at fitted default values. Estimated response, relative uncertainty, and reliability are
-presented in separate tabs.
+Response maps vary two compatible numeric predictors across their fitted ranges while holding other predictors at fitted defaults. They can display:
 
-The on-screen response-map host is a fixed square 720 × 720 pixels. It is not stretched to fill a
-rectangular viewport. When the available space is smaller, horizontal and vertical scrollbars appear.
-Exports remain square at 6 × 6 inches with selectable 150–2400 dpi quality.
+- estimated response;
+- relative uncertainty;
+- prediction interval width;
+- reliability.
 
-The map engine stores explicit row and column coordinates before reshaping predictions. It supports
-up to 100 × 100 grids and falls back to a one-dimensional response curve when only one suitable
-numeric predictor varies.
+The response-map host is a fixed square 720 × 720 pixels and becomes scrollable when required. Exports remain square at 6 × 6 inches with selectable 150–2400 dpi quality.
 
-## Twin library
+The map engine stores explicit row and column coordinates before reshaping predictions. It supports up to 100 × 100 grids and falls back to a one-dimensional response curve when only one suitable numeric predictor varies.
 
-Saved twin files use Joblib with matching JSON metadata. A twin should be rebuilt when the active
-dataset or selected variables change materially.
+## Twin hand-off to 3D Explorer
+
+When a twin is built or loaded, it is published as the **active twin artifact**. The 3D Response Surface consumes that artifact directly. It does not refit another model and does not offer an independent model-method selector.
+
+## Saved twins
+
+Saved twin files use Joblib with matching JSON metadata. New-format metadata records the selected prediction algorithm, prediction rank/status, empirical uncertainty method, training-domain information, and validation metrics. Legacy Gaussian Process / Forest Ensemble artifacts can still be loaded for backward compatibility, but new twins are created from the shared seven-model architecture.

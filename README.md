@@ -1,4 +1,4 @@
-# GPC-DTwin v1.1.5
+# GPC-DTwin v1.2.0
 
 GPC-DTwin is a release-ready desktop platform for structured geopolymer-concrete data management,
 quality checking, visual analytics, statistical analysis, predictive modelling, uncertainty-aware
@@ -9,9 +9,9 @@ multi-objective optimization, inverse material design, active learning, and repr
 
 1. **Overview** — dataset coverage, performance indicators, and quality status.
 2. **Data Explorer** — a unified four-tab workspace containing Data Explorer, Quality Check, Visual Analysis, and Statistical Analysis.
-3. **Predictive Models** — grouped cross-validation, response-aware predictor filtering, diagnostics, and saved models.
-4. **Digital Twin** — prediction intervals, reliability classes, batch estimates, and response maps.
-5. **3D Explorer** — response surfaces, uncertainty landscapes, reliability terrain, and estimated specimen fields.
+3. **Predictive Models** — seven-model grouped cross-validation, fold stability, dynamic ranking/status, diagnostics, and saved models.
+4. **Digital Twin** — inherits the matching predictive-model ranking, recommends rank #1, adds empirical uncertainty, domain support, reliability, batch estimates, and response maps.
+5. **3D Explorer** — visualizes the active Digital Twin without retraining and provides theory-based physics-informed specimen fields.
 6. **NDT & Durability** — matched NDT fusion, exposure ranking, scenario estimates, and response curves.
 7. **Optimization** — Pareto trade-offs, constraints, compromise ranking, and inverse design.
 8. **Active Learning** — experiment recommendation, compatible plan export, saved runs, and model-update comparison.
@@ -42,7 +42,7 @@ Every manual figure export opens a square-export preview and quality selector. A
 
 ## Publication graphics system
 
-Version 1.1.5 provides an application-wide, icon-driven chart presentation system:
+Version 1.2.0 retains the application-wide, icon-driven chart presentation system:
 
 - one compact palette icon on every Matplotlib chart;
 - Times New Roman as the default chart typeface;
@@ -78,6 +78,25 @@ See `docs/CHART_APPEARANCE.md` and `docs/PUBLICATION_GRAPHICS.md`.
 - Workspace identity appears once in the main top bar; duplicate page-level title blocks are removed.
 - No rule is drawn above tab rows; a single low-contrast baseline remains below each tab row.
 
+
+## Integrated Prediction → Digital Twin → 3D workflow
+
+GPC-DTwin 1.2.0 uses one shared registry of seven regression algorithms. Predictive Models is the
+authoritative benchmarking stage: it evaluates all seven algorithms with the same grouped validation
+splits, records fold variability, creates a dynamic ranking, and publishes that result to the application
+context. The ranking leader is marked **Recommended** for that exact response and predictor setup.
+
+Digital Twin accepts a matching ranking, selects rank #1 by default, and keeps all seven models
+selectable with their current rank and one-word validation status. It adds an algorithm-independent
+out-of-fold residual uncertainty interval, nearest-training distance, fitted-range checks, and A/B/C/D
+reliability. Dataset or verification-state changes invalidate stale shared model state.
+
+The 3D Response Surface consumes the active twin directly and never fits a separate surrogate. The
+second 3D view is now **Physics-Informed Specimen**: the former sinusoidal synthetic cube is removed
+and replaced by explicit compression, splitting-tensile, flexural-bending, and acid-diffusion fields with
+field-source and capacity-source provenance.
+
+See `docs/MODELING.md`, `docs/DIGITAL_TWIN.md`, and `docs/THREE_D_EXPLORER.md`.
 
 ## Predictive-model input compatibility
 
@@ -118,7 +137,7 @@ allows mixed mechanical-property searches without forcing unrelated test fields 
 ## Windows setup
 
 ```powershell
-Set-Location "D:\GPC-DTwin-v1.1"
+Set-Location "D:\GPC-DTwin"
 powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\run.ps1
 ```
@@ -146,6 +165,12 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1
 The build includes the application icon, Windows version metadata, bundled datasets, documentation,
 and required analytical libraries. `RELEASE_MANIFEST.sha256` lists the SHA-256 fingerprint of each
 source release file.
+
+## macOS ARM64 build
+
+The GitHub Actions workflow `.github/workflows/build-macos.yml` builds the Apple-silicon `.app` and DMG on `macos-26`. It installs the pinned release dependencies, runs tests and self-checks, freezes from `src/gpc_dtwin/app.py`, bundles the reference/template datasets plus resources/docs/licence files, verifies the Cocoa Qt plugin, runs the frozen-app self-check, verifies the DMG, and uploads the DMG with its SHA-256 checksum.
+
+The source workflow does not embed Apple Developer ID credentials; signing/notarization can be added separately when those credentials are available.
 
 ## Copyright and attribution
 

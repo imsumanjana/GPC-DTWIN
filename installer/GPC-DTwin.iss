@@ -1,5 +1,5 @@
 #define MyAppName "GPC-DTwin"
-#define MyAppVersion "1.1.5"
+#define MyAppVersion "1.2.0"
 #define MyAppPublisher "Dr. Suman Jana"
 #define MyAppExeName "GPC-DTwin.exe"
 #define MyAppURL "https://orcid.org/0000-0002-9850-2169"
@@ -32,7 +32,7 @@ PrivilegesRequired=admin
 MinVersion=10.0
 
 OutputDir=..\release
-OutputBaseFilename=GPC-DTwin-v1.1.5-Setup-x64
+OutputBaseFilename=GPC-DTwin-v1.2.0-Setup-x64
 
 ; Installer, uninstaller and Apps & Features icons.
 SetupIconFile=..\resources\GPC-DTwin.ico
@@ -59,8 +59,8 @@ RestartApplications=no
 UsePreviousAppDir=yes
 SetupLogging=yes
 
-VersionInfoVersion=1.1.5.0
-VersionInfoProductVersion=1.1.5.0
+VersionInfoVersion=1.2.0.0
+VersionInfoProductVersion=1.2.0.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoProductName={#MyAppName}
 VersionInfoDescription=Materials analytics and digital-twin platform

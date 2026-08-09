@@ -20,6 +20,7 @@ from gpc_dtwin.columns import (
 )
 from gpc_dtwin.ui.export_preview_dialog import open_figure_export_dialog
 from gpc_dtwin.paths import EXPORT_DIR, OPTIMIZATION_DIR
+from gpc_dtwin.services.digital_twin_service import DigitalTwinService
 from gpc_dtwin.services.optimization_service import (
     ConstraintDefinition, InverseDesignResult, ObjectiveDefinition,
     OptimizationRunResult, OptimizationService, TargetDefinition, VariableDefinition,
@@ -80,12 +81,13 @@ class OptimizationPage(QWidget):
         ))
         surrogate_form = QFormLayout()
         self.method_combo = QComboBox()
-        self.method_combo.addItems(["Forest Ensemble", "Gaussian Process"])
+        self.method_combo.addItems(DigitalTwinService.method_names())
+        self.method_combo.setCurrentText("Random Forest")
         self.confidence_spin = QDoubleSpinBox()
         self.confidence_spin.setRange(80.0, 99.0)
         self.confidence_spin.setValue(95.0)
         self.confidence_spin.setSuffix(" %")
-        surrogate_form.addRow("Method", self.method_combo)
+        surrogate_form.addRow("Prediction model", self.method_combo)
         surrogate_form.addRow("Confidence", self.confidence_spin)
         surrogate_layout.addLayout(surrogate_form)
         self.predictor_list = QListWidget()

@@ -3,11 +3,13 @@
 ## Purpose
 
 The Active Learning workspace identifies material scenarios that can improve a response surrogate or
-explore a promising region with a limited number of new experiments.
+explore a promising region with a limited number of new experiments. It uses the same seven shared
+regression algorithms and common empirical uncertainty layer as the Digital Twin service; Random Forest
+is the standalone default unless another model is selected.
 
 ## Experiment recommendations
 
-1. Select a response and uncertainty method.
+1. Select a response and prediction model.
 2. Select predictors with sufficient usable observations.
 3. Choose an acquisition strategy and response direction.
 4. Set candidate-pool size, recommendation count, diversity weight, and random seed.

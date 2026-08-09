@@ -49,6 +49,7 @@ class DigitalTwinPage(QWidget):
         root.addWidget(self.tabs, 1)
 
         self.context.data_changed.connect(self.refresh)
+        self.context.model_comparison_changed.connect(self._refresh_model_ranking)
         self.refresh()
         self.refresh_library()
 
@@ -69,19 +70,22 @@ class DigitalTwinPage(QWidget):
         self.response_combo = QComboBox()
         self.response_combo.currentIndexChanged.connect(self.refresh_predictor_availability)
         self.method_combo = QComboBox()
-        self.method_combo.addItems(self.service.method_names())
+        self.method_combo.setToolTip(
+            "Models are ordered and annotated from the matching Predictive Modelling run."
+        )
         self.confidence_combo = QComboBox()
         for value in (90.0, 95.0, 99.0):
             self.confidence_combo.addItem(f"{value:.0f}%", value)
         self.confidence_combo.setCurrentIndex(1)
         form.addRow("Response", self.response_combo)
-        form.addRow("Twin method", self.method_combo)
+        form.addRow("Prediction model", self.method_combo)
         form.addRow("Confidence", self.confidence_combo)
         controls_layout.addLayout(form)
 
         controls_layout.addWidget(QLabel("Predictors"))
         self.predictor_list = QListWidget()
         self.predictor_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.predictor_list.itemChanged.connect(lambda _item: self._refresh_model_ranking())
         controls_layout.addWidget(self.predictor_list, 1)
         self.include_review = QCheckBox("Include records marked for review")
         self.include_review.toggled.connect(self.refresh_predictor_availability)
@@ -92,10 +96,17 @@ class DigitalTwinPage(QWidget):
         self.predictor_note.setObjectName("Muted")
         self.predictor_note.setWordWrap(True)
         controls_layout.addWidget(self.predictor_note)
-        build_button = QPushButton("Build digital twin")
-        build_button.setObjectName("PrimaryButton")
-        build_button.clicked.connect(self.build_twin)
-        controls_layout.addWidget(build_button)
+        self.model_note = QLabel(
+            "Run Predictive Modelling with the same response and predictors to rank the seven models."
+        )
+        self.model_note.setObjectName("Muted")
+        self.model_note.setWordWrap(True)
+        controls_layout.addWidget(self.model_note)
+        self.build_button = QPushButton("Build digital twin")
+        self.build_button.setObjectName("PrimaryButton")
+        self.build_button.clicked.connect(self.build_twin)
+        self.build_button.setEnabled(False)
+        controls_layout.addWidget(self.build_button)
         controls_scroll = scrollable_panel(controls, minimum_width=350)
         controls_scroll.setMaximumWidth(470)
         splitter.addWidget(controls_scroll)
@@ -111,7 +122,7 @@ class DigitalTwinPage(QWidget):
         self.records_pill = ValuePill()
         toolbar = CompactToolbar()
         for label, pill in (
-            ("Method", self.method_pill),
+            ("Model", self.method_pill),
             ("RMSE", self.rmse_pill),
             ("R²", self.r2_pill),
             ("Coverage", self.coverage_pill),
@@ -336,6 +347,10 @@ class DigitalTwinPage(QWidget):
             item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
             self.predictor_list.addItem(item)
         self.refresh_predictor_availability()
+        if self.context.active_twin_artifact is None and self.active_artifact is not None:
+            self.active_artifact = None
+            self.current_result = None
+        self._refresh_model_ranking()
 
     def refresh_predictor_availability(self, *_args) -> None:
         if not hasattr(self, "predictor_list"):
@@ -355,6 +370,7 @@ class DigitalTwinPage(QWidget):
         available_set = set(available)
         unavailable_set = set(unavailable)
         labels: list[str] = []
+        self.predictor_list.blockSignals(True)
         for index in range(self.predictor_list.count()):
             item = self.predictor_list.item(index)
             field = str(item.data(Qt.ItemDataRole.UserRole))
@@ -374,6 +390,7 @@ class DigitalTwinPage(QWidget):
                     )
                     if field in unavailable_set:
                         labels.append(COLUMN_LABELS.get(field, field))
+        self.predictor_list.blockSignals(False)
         if labels:
             self.predictor_note.setText(
                 f"{len(labels)} unavailable parameters are excluded automatically for "
@@ -383,6 +400,52 @@ class DigitalTwinPage(QWidget):
             self.predictor_note.setText(
                 "All listed predictors have usable overlap with the selected response."
             )
+        self._refresh_model_ranking()
+
+    def _refresh_model_ranking(self, *_args) -> None:
+        if not hasattr(self, "method_combo") or not hasattr(self, "predictor_list"):
+            return
+        response = self.response_combo.currentData()
+        predictors = [value for value in self._checked_predictors() if value != response]
+        ranking = None
+        if response and predictors:
+            ranking = self.context.matching_model_comparison(
+                str(response),
+                predictors,
+                include_review_records=self.include_review.isChecked(),
+            )
+        self.method_combo.blockSignals(True)
+        self.method_combo.clear()
+        if ranking is None:
+            self.method_combo.addItem("No matching validated ranking", None)
+            self.method_combo.setEnabled(False)
+            self.build_button.setEnabled(False)
+            self.model_note.setText(
+                "No matching model ranking is available. Run Predictive Modelling with this response, predictor set, and review-record setting first."
+            )
+        else:
+            table = ranking.rankings.sort_values("rank")
+            for _, row in table.iterrows():
+                algorithm = str(row["algorithm"])
+                status = str(row.get("status", ""))
+                rank_value = int(row["rank"])
+                self.method_combo.addItem(
+                    f"#{rank_value}  {algorithm} — {status}", algorithm
+                )
+                self.method_combo.setItemData(
+                    self.method_combo.count() - 1,
+                    str(row.get("status_reason", "")),
+                    Qt.ItemDataRole.ToolTipRole,
+                )
+            self.method_combo.setCurrentIndex(0)
+            self.method_combo.setEnabled(True)
+            self.build_button.setEnabled(True)
+            leader = table.iloc[0]
+            self.model_note.setText(
+                f"Default recommendation follows Predictive Modelling: #{int(leader['rank'])} "
+                f"{leader['algorithm']} — {leader.get('status', 'Recommended')}. All seven ranked models remain selectable."
+            )
+        self.method_combo.blockSignals(False)
 
     def _checked_predictors(self) -> list[str]:
         return [
@@ -398,19 +461,30 @@ class DigitalTwinPage(QWidget):
             return
         self.setCursor(Qt.CursorShape.WaitCursor)
         try:
+            ranking = self.context.matching_model_comparison(
+                str(response), predictors, include_review_records=self.include_review.isChecked()
+            )
+            if ranking is None:
+                raise ValueError(
+                    "No matching validated model ranking is available. Run Predictive Modelling first."
+                )
+            algorithm = self.method_combo.currentData()
+            if not algorithm:
+                raise ValueError("Select a ranked prediction model.")
             result = self.service.build_twin(
                 self.context.dataframe,
                 response=response,
                 predictors=predictors,
-                method=self.method_combo.currentText(),
+                method=str(algorithm),
                 confidence_percent=float(self.confidence_combo.currentData()),
                 include_review_records=self.include_review.isChecked(),
+                ranking=ranking,
             )
             self.current_result = result
             self._show_result(result)
             self._set_active_artifact(result.artifact)
             self.context.message.emit(
-                f"Digital twin created with {result.method} using {result.observations} records."
+                f"Digital twin created with {result.method} (rank #{result.model_rank or '—'}, {result.model_status}) using {result.observations} records."
             )
             if result.omitted_predictors:
                 labels = [
@@ -441,8 +515,9 @@ class DigitalTwinPage(QWidget):
         self.coverage_pill.set_value(f"{metrics['coverage_percent']:.1f}%", coverage_tone)
         self.width_pill.set_value(f"{metrics['mean_interval_width']:.4f}")
         self.records_pill.set_value(result.observations)
+        rank_text = f"Rank #{result.model_rank} · {result.model_status} · " if result.model_rank else ""
         message = (
-            f"{result.cv_method} · {result.confidence_percent:.0f}% intervals · "
+            f"{rank_text}{result.cv_method} · {result.confidence_percent:.0f}% empirical intervals · "
             f"{result.excluded_records} rows omitted."
         )
         if result.omitted_predictors:
@@ -457,13 +532,17 @@ class DigitalTwinPage(QWidget):
 
     def _set_active_artifact(self, artifact: dict) -> None:
         self.active_artifact = artifact
+        self.context.set_active_twin(artifact)
         metadata = artifact["metadata"]
         metrics = metadata.get("metrics", {})
+        rank = metadata.get("model_rank")
+        status = metadata.get("model_status", "Unranked")
+        rank_text = f"#%s · " % rank if rank else ""
         self.active_twin_label.setText(
             f"{metadata['method']} · {COLUMN_LABELS.get(metadata['response'], metadata['response'])}"
         )
         self.active_twin_detail.setText(
-            f"{metadata.get('confidence_percent', 95):.0f}% interval · "
+            f"{rank_text}{status} · {metadata.get('confidence_percent', 95):.0f}% interval · "
             f"RMSE {metrics.get('rmse', float('nan')):.4f} · "
             f"{metadata.get('observations', '—')} records"
         )
