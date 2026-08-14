@@ -12,7 +12,7 @@ DATASET = ROOT / "data" / "reference" / "GPC_Reference_Dataset.csv"
 def test_all_visual_analytics_figures_build():
     dataframe = DataService.load_csv(DATASET)
     service = AnalyticsService()
-    assert len(service.CHARTS) == 10
+    assert len(service.CHARTS) == 11
     for definition in service.CHARTS:
         figure = service.create_figure(dataframe, definition.key, "M2")
         assert isinstance(figure, Figure)

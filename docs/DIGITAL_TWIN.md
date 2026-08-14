@@ -67,7 +67,11 @@ Response maps vary two compatible numeric predictors across their fitted ranges 
 
 The response-map host is a fixed square 720 × 720 pixels and becomes scrollable when required. Exports remain square at 6 × 6 inches with selectable 150–2400 dpi quality.
 
-The map engine stores explicit row and column coordinates before reshaping predictions. It supports up to 100 × 100 grids and falls back to a one-dimensional response curve when only one suitable numeric predictor varies.
+The map engine stores explicit row and column coordinates before reshaping predictions. It supports up to 100 × 100 grids and exposes every finite numeric predictor used by the active twin. Axis limits initialize from fitted ranges; when a fitted range is flat, the user must explicitly enter a nonzero exploration span before generation.
+
+### Binder-composition closure
+
+When any FA (%), GGBS (%), or SF (%) predictor is used as a response-view axis, the current twin treats the three binder fractions as a composition rather than independent percentages. If only one binder component is an axis, the **Balance binder** selector chooses which second binder absorbs the change while the remaining binder is held at its fitted default. A two-binder 2D map is enabled only when the fitted binder compositions span two independent directions. With the bundled reference data, SF is fixed at 10% and FA/GGBS provide only one independent direction, so two-binder 2D maps are blocked rather than rendered as extrapolation-dominated triangles. Future data with independent SF variation automatically enable such maps; the third binder is then derived as `100 - X - Y`, and physically impossible points are masked before prediction.
 
 ## Twin hand-off to 3D Explorer
 
@@ -85,3 +89,5 @@ The Build and calibrate workspace presents the calibration table and response ch
 ## Validated upstream prerequisite (v1.2.2)
 
 Digital Twin is a downstream workflow and is enabled only after Predictive Models has completed a validated model comparison. On entry, the response, usable predictor set, and review-record policy are inherited directly from that comparison and displayed read-only. Changing these modelling inputs therefore requires returning to Predictive Models and validating the new configuration. The **Prediction** and **Response maps** tabs are enabled only after a twin has been built or loaded.
+
+FA, GGBS, and SF remain part of the inherited binder composition whenever they were validated upstream. In the bundled reference dataset the fitted SF range is 10–10%, but `SF (%)` is still exposed in the response-map axis selectors just like FA and GGBS. Its axis limits initially show 10–10%; an explicit nonzero exploration range is required for a what-if sweep, and points outside the fitted range retain the Digital Twin extrapolation/reliability warnings. If future data provide a wider SF range, those fitted limits are used automatically.

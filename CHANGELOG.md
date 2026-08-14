@@ -1,5 +1,37 @@
 # Change Log
 
+## Version 1.2.6
+
+- Added empirical binder-composition rank to Digital Twin metadata.
+- Blocked two-binder 2D response surfaces when the fitted data support only one independent composition direction, preventing the triangular extrapolation-dominated surface seen with the current SF=10% reference data.
+- Added supported default-axis selection; one binder plus an independently varying process/condition predictor is preferred over two dependent binder axes.
+- Kept SF fully selectable and future-ready while requiring explicit range expansion when its fitted range is flat.
+- Removed generic closure warnings from ordinary supported response views and replaced them with specific actionable messages only for unsupported axis pairs or zero-width ranges.
+- Filtered 3D observed-point overlays to the exact response-surface cross-section defined by the held predictor defaults.
+
+## Version 1.2.5
+
+- Made Digital Twin response maps and 3D response surfaces composition-aware for the FA–GGBS–SF binder system.
+- When two binder components are used as axes, the third component is derived automatically from `FA + GGBS + SF = 100%`.
+- When one binder component is paired with a non-binder axis, a Balance binder selector chooses which second binder absorbs the composition change while the third binder remains at its fitted default.
+- Invalid compositions (negative component, component above 100%, or closure failure) are masked and are never sent to the prediction model.
+- Added full FA/GGBS/SF composition columns and closure provenance to exported response-map/curve grids.
+- Added valid/total grid-node reporting and blank-region annotations for compositionally invalid areas.
+- Replaced flat-axis build errors with non-blocking range warnings and disabled Build/Generate controls until a nonzero exploration span is entered.
+- Preserved legacy/custom twins that omit one binder predictor: their response views remain usable, but the UI reports that binder closure cannot be enforced until FA, GGBS, and SF are all included.
+
+## Version 1.2.4
+
+- Made FA, GGBS, and SF one shared first-class binder-composition group throughout the codebase.
+- Kept SF (%) in prediction, feature influence, Digital Twin scenarios, saved metadata, optimisation, active learning, and 3D provenance even when the active dataset currently uses 10% SF.
+- Added a dedicated FA–GGBS–SF binder composition chart.
+- Updated 28-day compressive-strength, UPV, Overview, and report graphics to show all three binder components instead of GGBS alone.
+- Updated Statistical Analysis regression defaults to select FA, GGBS, and SF together.
+- Added binder defaults/ranges to model and Digital Twin metadata and visible provenance.
+- Added regression coverage confirming that future datasets with varying SF automatically expose SF as a Digital Twin response-map/3D axis.
+- Corrected the current-reference-data case so SF also appears in the Digital Twin and 3D response-axis selectors when its fitted range is 10–10%.
+- Added explicit X/Y exploration-range controls; flat fitted ranges require a deliberate user-defined span, and resulting out-of-domain points retain Digital Twin extrapolation/reliability warnings.
+
 ## Version 1.2.2
 
 - Split Predictive Models feature influence into dedicated table and chart tabs.

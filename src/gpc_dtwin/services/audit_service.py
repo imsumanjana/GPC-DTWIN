@@ -8,7 +8,7 @@ import re
 import numpy as np
 import pandas as pd
 
-from gpc_dtwin.columns import NONNEGATIVE_COLUMNS, REQUIRED_ID_COLUMNS
+from gpc_dtwin.columns import BINDER_PERCENT_COLUMNS, NONNEGATIVE_COLUMNS, REQUIRED_ID_COLUMNS
 
 ISSUE_COLUMNS = [
     "severity",
@@ -124,7 +124,7 @@ class AuditService:
             ))
 
     def _check_binder_sum(self, df: pd.DataFrame, issues: list[dict]) -> None:
-        columns = ["fa_percent_numeric", "ggbs_percent_numeric", "sf_percent_numeric"]
+        columns = list(BINDER_PERCENT_COLUMNS)
         if not set(columns).issubset(df.columns):
             return
         values = df[columns].apply(pd.to_numeric, errors="coerce")
@@ -191,7 +191,7 @@ class AuditService:
 
     def _check_mix_label_consistency(self, df: pd.DataFrame, issues: list[dict]) -> None:
         required = {
-            "mix_proportion_label", "fa_percent_numeric", "ggbs_percent_numeric", "sf_percent_numeric"
+            "mix_proportion_label", *BINDER_PERCENT_COLUMNS
         }
         if not required.issubset(df.columns):
             return
@@ -210,9 +210,7 @@ class AuditService:
                 ))
                 continue
             reported = tuple(float(number) for number in numbers)
-            numeric = tuple(self._number(row.get(column)) for column in (
-                "fa_percent_numeric", "ggbs_percent_numeric", "sf_percent_numeric"
-            ))
+            numeric = tuple(self._number(row.get(column)) for column in BINDER_PERCENT_COLUMNS)
             if any(value is None for value in numeric):
                 continue
             if not all(np.isclose(a, b, atol=0.01) for a, b in zip(reported, numeric)):
@@ -261,7 +259,7 @@ class AuditService:
             ))
 
     def _check_ranges(self, df: pd.DataFrame, issues: list[dict]) -> None:
-        for column in ("fa_percent_numeric", "ggbs_percent_numeric", "sf_percent_numeric"):
+        for column in BINDER_PERCENT_COLUMNS:
             if column not in df.columns:
                 continue
             values = pd.to_numeric(df[column], errors="coerce")

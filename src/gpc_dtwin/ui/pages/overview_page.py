@@ -36,7 +36,8 @@ class OverviewPage(QWidget):
 
         charts = QHBoxLayout()
         self.strength_chart = ChartCard(
-            "Strength profile", "Ambient 28-day compressive strength across GGBS content."
+            "Strength & binder profile",
+            "Ambient 28-day compressive strength with FA, GGBS, and SF composition."
         )
         self.heatmap_chart = ChartCard(
             "Performance map", "Normalised mechanical and non-destructive properties."

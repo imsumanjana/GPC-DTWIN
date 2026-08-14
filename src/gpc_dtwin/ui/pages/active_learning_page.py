@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
 )
 
 from gpc_dtwin.columns import (
-    COLUMN_LABELS, MODEL_DEFAULT_PREDICTORS, MODEL_NUMERIC_PREDICTORS,
+    BINDER_PERCENT_COLUMNS, COLUMN_LABELS, MODEL_DEFAULT_PREDICTORS, MODEL_NUMERIC_PREDICTORS,
     MODEL_PREDICTOR_COLUMNS, MODEL_RESPONSE_COLUMNS,
 )
 from gpc_dtwin.ui.export_preview_dialog import open_figure_export_dialog
@@ -430,9 +430,7 @@ class ActiveLearningPage(QWidget):
         self.variable_table.resizeColumnsToContents()
 
     def reset_variable_bounds(self) -> None:
-        fields = [
-            "fa_percent_numeric", "ggbs_percent_numeric", "sf_percent_numeric", "aas_b_ratio"
-        ]
+        fields = [*BINDER_PERCENT_COLUMNS, "aas_b_ratio"]
         self._fill_variable_table(fields)
         self.binder_closure.setChecked(True)
 

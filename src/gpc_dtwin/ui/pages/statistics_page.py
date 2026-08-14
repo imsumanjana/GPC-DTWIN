@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 
-from gpc_dtwin.columns import COLUMN_LABELS
+from gpc_dtwin.columns import BINDER_PERCENT_COLUMNS, COLUMN_LABELS
 from gpc_dtwin.ui.export_preview_dialog import open_figure_export_dialog
 from gpc_dtwin.paths import EXPORT_DIR
 from gpc_dtwin.services.statistics_service import StatisticsService
@@ -198,7 +198,11 @@ class StatisticsPage(QWidget):
         predictor_options = numeric + [factor for factor in factors if factor not in {"data_status"}]
         self._fill_check_list(
             self.reg_predictors, predictor_options,
-            checked_items={"ggbs_percent_numeric", "mechanical_test_age_days", "aas_b_ratio"}
+            checked_items={
+                *BINDER_PERCENT_COLUMNS,
+                "mechanical_test_age_days",
+                "aas_b_ratio",
+            }
         )
         self.refresh_regression_predictors()
         self.run_descriptive()

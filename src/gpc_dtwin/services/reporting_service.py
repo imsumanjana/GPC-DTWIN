@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 
 from gpc_dtwin import __version__
-from gpc_dtwin.columns import COLUMN_LABELS, MODEL_RESPONSE_COLUMNS
+from gpc_dtwin.columns import BINDER_PERCENT_COLUMNS, COLUMN_LABELS, MODEL_RESPONSE_COLUMNS
 from gpc_dtwin.figure_export import save_square_figure
 from gpc_dtwin.metadata import (
     APP_NAME, COPYRIGHT_HOLDER, COPYRIGHT_TEXT, ORCID_ID, ORCID_URL,
@@ -268,7 +268,7 @@ class ReportingService:
 
     @classmethod
     def _strength_figure(cls, dataframe: pd.DataFrame) -> Figure:
-        required = {"ggbs_percent_numeric", "compressive_strength_mpa"}
+        required = {"mix_id", "compressive_strength_mpa", *BINDER_PERCENT_COLUMNS}
         if not required.issubset(dataframe.columns):
             return cls._empty_figure("Compressive-strength values are unavailable")
         subset = dataframe.copy()
@@ -276,39 +276,44 @@ class ReportingService:
             preferred = subset[subset["record_group"] == "AMBIENT_28D_MECHANICAL"]
             if not preferred.empty:
                 subset = preferred
-        subset = subset[[
-            column for column in ("mix_id", "ggbs_percent_numeric", "compressive_strength_mpa")
-            if column in subset.columns
-        ]].copy()
-        subset["ggbs_percent_numeric"] = pd.to_numeric(
-            subset["ggbs_percent_numeric"], errors="coerce"
-        )
+        subset = subset[["mix_id", *BINDER_PERCENT_COLUMNS, "compressive_strength_mpa"]].copy()
+        for column in BINDER_PERCENT_COLUMNS:
+            subset[column] = pd.to_numeric(subset[column], errors="coerce")
         subset["compressive_strength_mpa"] = pd.to_numeric(
             subset["compressive_strength_mpa"], errors="coerce"
         )
-        subset = subset.dropna(subset=["ggbs_percent_numeric", "compressive_strength_mpa"])
+        subset["_mix_order"] = pd.to_numeric(
+            subset["mix_id"].astype(str).str.extract(r"(\d+)", expand=False),
+            errors="coerce",
+        )
+        subset = subset.dropna(subset=["compressive_strength_mpa"])
         if subset.empty:
             return cls._empty_figure("Compressive-strength values are unavailable")
-        subset = subset.sort_values("ggbs_percent_numeric")
+        subset = subset.sort_values(["_mix_order", "mix_id"], na_position="last")
         figure, axis = cls._new_figure()
         axis.plot(
-            subset["ggbs_percent_numeric"],
+            subset["mix_id"],
             subset["compressive_strength_mpa"],
             marker="o",
+            label="Compressive strength",
         )
-        if "mix_id" in subset.columns:
-            for _, row in subset.iterrows():
-                axis.annotate(
-                    str(row["mix_id"]),
-                    (row["ggbs_percent_numeric"], row["compressive_strength_mpa"]),
-                    xytext=(4, 5),
-                    textcoords="offset points",
-                    fontsize=8,
-                )
-        axis.set_xlabel("GGBS content (%)")
+        axis.set_xlabel("Mix ID")
         axis.set_ylabel("Compressive strength (MPa)")
-        axis.set_title("Compressive-strength profile")
+        axis.set_title("Compressive strength and FA–GGBS–SF composition")
         axis.grid(True, alpha=0.25)
+        binder_axis = axis.twinx()
+        for column in BINDER_PERCENT_COLUMNS:
+            values = pd.to_numeric(subset[column], errors="coerce")
+            if values.notna().any():
+                binder_axis.plot(
+                    subset["mix_id"], values, marker="o", linewidth=1.3,
+                    label=COLUMN_LABELS.get(column, column),
+                )
+        binder_axis.set_ylabel("Binder content (%)")
+        binder_axis.set_ylim(0, 100)
+        handles1, labels1 = axis.get_legend_handles_labels()
+        handles2, labels2 = binder_axis.get_legend_handles_labels()
+        axis.legend(handles1 + handles2, labels1 + labels2, loc="best")
         return figure
 
     @classmethod

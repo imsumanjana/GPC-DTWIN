@@ -4,7 +4,7 @@ The compatible CSV contains 44 fields grouped into these areas:
 
 - Record identity: record ID, record group, dataset origin, data block, data locator
 - Mix identity: mix ID and FA:GGBS:SF label
-- Binder composition: FA, GGBS, and silica-fume percentages and quantities
+- Binder composition: FA, GGBS, and silica-fume percentages and quantities. All three are first-class fields; the bundled reference dataset uses SF = 10%, while imported datasets may use other SF levels without changing the schema.
 - Aggregate and activator quantities
 - Activator ratio, AAS:B ratio, and superplasticizer dosage
 - Curing regime, temperature, duration, and test age

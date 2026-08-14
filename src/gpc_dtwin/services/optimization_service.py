@@ -17,7 +17,7 @@ from scipy.stats import qmc
 
 from gpc_dtwin import __version__
 from gpc_dtwin.chart_style import apply_chart_style
-from gpc_dtwin.columns import COLUMN_LABELS, MODEL_NUMERIC_PREDICTORS
+from gpc_dtwin.columns import BINDER_PERCENT_COLUMNS, COLUMN_LABELS, MODEL_NUMERIC_PREDICTORS
 from gpc_dtwin.services.digital_twin_service import DigitalTwinService, TwinBuildResult
 
 
@@ -96,9 +96,7 @@ class InverseDesignResult:
 class OptimizationService:
     """Create Pareto fronts and inverse-design recommendations from fitted surrogates."""
 
-    COMPOSITION_FIELDS = (
-        "fa_percent_numeric", "ggbs_percent_numeric", "sf_percent_numeric"
-    )
+    COMPOSITION_FIELDS = tuple(BINDER_PERCENT_COLUMNS)
 
     @staticmethod
     def _slug(value: str) -> str:

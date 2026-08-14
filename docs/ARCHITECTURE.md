@@ -67,3 +67,7 @@ The 3D Response Surface consumes `active_twin_artifact` directly and never fits 
 ### Workflow availability gates (v1.2.2)
 
 The GUI now enforces the principal dependency chain: active data → validated Predictive Models comparison → Digital Twin → 3D Explorer. Downstream navigation and dependent result tabs remain disabled until their upstream artifact exists. Dataset or verification-state changes invalidate model/twin state and automatically return the interface to the nearest valid upstream workspace.
+
+## Binder-composition response-space contract
+
+FA, GGBS, and SF are first-class model inputs but they are compositionally coupled in response-space exploration. `DigitalTwinService` owns the closure contract and is the single source for both 2D response maps and 3D surfaces. One binder axis uses an explicit balance binder. Two binder axes are permitted only when the fitted binder cloud has two independent composition directions; when supported, the third component is derived by closure and invalid compositions are masked before `predict_dataframe`. If the fitted binder cloud has only one degree of freedom, a two-binder 2D surface is blocked as extrapolation-dominated. `Visualization3DService` consumes this grid unchanged, filters observation overlays to the same held-default cross-section, and does not recreate composition logic or retrain a model.

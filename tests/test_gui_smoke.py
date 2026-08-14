@@ -31,7 +31,7 @@ def test_main_window_loads_with_unified_data_workspace(qtbot, tmp_path):
         )
         for page in window.pages
     )
-    assert window.windowTitle().startswith("GPC-DTwin v1.2.2")
+    assert window.windowTitle().startswith("GPC-DTwin v1.2.6")
     assert len(window.page_containers) == 10
     assert all(isinstance(item, ResponsiveScrollArea) for item in window.page_containers)
     assert all(

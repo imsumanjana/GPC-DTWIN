@@ -214,6 +214,18 @@ ANALYSIS_FACTOR_COLUMNS = [
     "record_group", "mix_id", "curing_regime", "acid_type", "workability_class", "data_status"
 ]
 
+# Binder composition is always represented by the same three first-class variables.
+# The bundled reference dataset happens to contain SF = 10% for every mix, but SF is
+# intentionally kept alongside FA and GGBS so future datasets with different silica-
+# fume contents work without any schema or modelling change.
+BINDER_PERCENT_COLUMNS = [
+    "fa_percent_numeric", "ggbs_percent_numeric", "sf_percent_numeric",
+]
+
+BINDER_MASS_COLUMNS = [
+    "fly_ash_kg_m3", "ggbs_kg_m3", "sf_kg_m3",
+]
+
 MODEL_RESPONSE_COLUMNS = [
     "slump_mm", "compressive_strength_mpa", "split_tensile_strength_mpa",
     "flexural_strength_mpa", "upv_m_s", "rebound_estimated_strength_mpa",
@@ -222,7 +234,7 @@ MODEL_RESPONSE_COLUMNS = [
 ]
 
 MODEL_NUMERIC_PREDICTORS = {
-    "fa_percent_numeric", "ggbs_percent_numeric", "sf_percent_numeric",
+    *BINDER_PERCENT_COLUMNS,
     "coarse_aggregate_kg_m3", "fine_aggregate_kg_m3", "fly_ash_kg_m3",
     "ggbs_kg_m3", "sf_kg_m3", "naoh_kg_m3", "na2sio3_kg_m3",
     "naoh_molarity_M", "superplasticizer_percent", "aas_b_ratio",
@@ -236,7 +248,7 @@ MODEL_NUMERIC_PREDICTORS = {
 }
 
 MODEL_PREDICTOR_COLUMNS = [
-    "fa_percent_numeric", "ggbs_percent_numeric", "sf_percent_numeric",
+    *BINDER_PERCENT_COLUMNS,
     "coarse_aggregate_kg_m3", "fine_aggregate_kg_m3", "naoh_molarity_M",
     "superplasticizer_percent", "aas_b_ratio", "curing_regime",
     "curing_temperature_C", "curing_duration_hours", "mechanical_test_age_days",
@@ -247,7 +259,7 @@ MODEL_PREDICTOR_COLUMNS = [
 ]
 
 MODEL_DEFAULT_PREDICTORS = [
-    "fa_percent_numeric", "ggbs_percent_numeric", "sf_percent_numeric",
+    *BINDER_PERCENT_COLUMNS,
     "aas_b_ratio", "mechanical_test_age_days", "curing_temperature_C",
     "curing_duration_hours", "curing_regime",
 ]

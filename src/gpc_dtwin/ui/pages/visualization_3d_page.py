@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QTabWidget, QVBoxLayout, QWidget,
 )
 
-from gpc_dtwin.columns import COLUMN_LABELS
+from gpc_dtwin.columns import BINDER_PERCENT_COLUMNS, COLUMN_LABELS
 from gpc_dtwin.paths import EXPORT_DIR
 from gpc_dtwin.services.data_service import DataService
 from gpc_dtwin.services.visualization_3d_service import (
@@ -59,6 +59,14 @@ class Visualization3DPage(QWidget):
         axis.text(0.5, 0.5, message, ha="center", va="center", fontsize=13, alpha=0.72, wrap=True)
         return figure
 
+    @staticmethod
+    def _axis_range_spin() -> QDoubleSpinBox:
+        spin = QDoubleSpinBox()
+        spin.setRange(-1_000_000.0, 1_000_000.0)
+        spin.setDecimals(4)
+        spin.setSingleStep(1.0)
+        return spin
+
     def _surface_tab(self) -> QWidget:
         page = QWidget()
         layout = QHBoxLayout(page)
@@ -84,6 +92,18 @@ class Visualization3DPage(QWidget):
         form = QFormLayout()
         self.surface_x_combo = QComboBox()
         self.surface_y_combo = QComboBox()
+        self.surface_x_combo.currentIndexChanged.connect(self._update_surface_axis_ranges)
+        self.surface_y_combo.currentIndexChanged.connect(self._update_surface_axis_ranges)
+        self.surface_x_combo.currentIndexChanged.connect(self._update_surface_composition_controls)
+        self.surface_y_combo.currentIndexChanged.connect(self._update_surface_composition_controls)
+        self.surface_x_min_spin = self._axis_range_spin()
+        self.surface_x_max_spin = self._axis_range_spin()
+        self.surface_y_min_spin = self._axis_range_spin()
+        self.surface_y_max_spin = self._axis_range_spin()
+        for spin in (self.surface_x_min_spin, self.surface_x_max_spin, self.surface_y_min_spin, self.surface_y_max_spin):
+            spin.valueChanged.connect(self._update_surface_build_state)
+        self.surface_balance_combo = QComboBox()
+        self.surface_balance_combo.currentIndexChanged.connect(self._update_surface_composition_controls)
         self.surface_mode_combo = QComboBox()
         self.surface_mode_combo.addItems(self.service.surface_modes())
         self.surface_resolution_spin = QSpinBox()
@@ -91,10 +111,30 @@ class Visualization3DPage(QWidget):
         self.surface_resolution_spin.setValue(35)
         self.surface_resolution_spin.setSuffix(" × ")
         form.addRow("X axis", self.surface_x_combo)
+        form.addRow("X minimum", self.surface_x_min_spin)
+        form.addRow("X maximum", self.surface_x_max_spin)
         form.addRow("Y axis", self.surface_y_combo)
+        form.addRow("Y minimum", self.surface_y_min_spin)
+        form.addRow("Y maximum", self.surface_y_max_spin)
+        form.addRow("Balance binder", self.surface_balance_combo)
         form.addRow("Surface", self.surface_mode_combo)
         form.addRow("Grid", self.surface_resolution_spin)
         controls_layout.addLayout(form)
+        self.surface_closure_note = QLabel("Binder composition held at fitted defaults.")
+        self.surface_closure_note.setObjectName("Muted")
+        self.surface_closure_note.setWordWrap(True)
+        controls_layout.addWidget(self.surface_closure_note)
+        self.surface_range_warning = QLabel("")
+        self.surface_range_warning.setObjectName("Muted")
+        self.surface_range_warning.setWordWrap(True)
+        controls_layout.addWidget(self.surface_range_warning)
+        self.surface_range_note = QLabel(
+            "Axis limits start from the fitted range. Flat fitted ranges such as SF = 10% remain selectable; "
+            "edit the minimum/maximum to explore beyond the fitted data. Such points are marked as extrapolative by the twin."
+        )
+        self.surface_range_note.setObjectName("Muted")
+        self.surface_range_note.setWordWrap(True)
+        controls_layout.addWidget(self.surface_range_note)
 
         self.surface_overlay_check = QCheckBox("Overlay available observations")
         self.surface_overlay_check.setChecked(True)
@@ -238,15 +278,124 @@ class Visualization3DPage(QWidget):
         metadata = artifact["metadata"]; candidates = self.service.twin_service.map_axis_candidates(artifact)
         rank = metadata.get("model_rank"); rank_text = f"#%s · " % rank if rank else ""
         self.surface_twin_label.setText(
-            f"{COLUMN_LABELS.get(metadata['response'], metadata['response'])} · {metadata.get('method')} · {rank_text}{metadata.get('model_status', 'Unranked')} · {metadata.get('confidence_percent', 95):.0f}% interval"
+            f"{COLUMN_LABELS.get(metadata['response'], metadata['response'])} · {metadata.get('method')} · {rank_text}{metadata.get('model_status', 'Unranked')} · {metadata.get('confidence_percent', 95):.0f}% interval · {self._artifact_binder_summary(metadata)}"
         )
+        self.surface_x_combo.blockSignals(True); self.surface_y_combo.blockSignals(True)
         for value in candidates:
             label = COLUMN_LABELS.get(value, value); self.surface_x_combo.addItem(label, value); self.surface_y_combo.addItem(label, value)
         if len(candidates) >= 2:
-            self.surface_y_combo.setCurrentIndex(1); self.surface_build_button.setEnabled(True)
+            preferred_x, preferred_y = self.service.twin_service.preferred_response_axes(artifact)
+            x_index = self.surface_x_combo.findData(preferred_x)
+            y_index = self.surface_y_combo.findData(preferred_y)
+            if x_index >= 0:
+                self.surface_x_combo.setCurrentIndex(x_index)
+            if y_index >= 0:
+                self.surface_y_combo.setCurrentIndex(y_index)
+            elif self.surface_y_combo.currentData() == self.surface_x_combo.currentData():
+                self.surface_y_combo.setCurrentIndex(1 if self.surface_x_combo.currentIndex() != 1 else 0)
         else:
             self.surface_build_button.setEnabled(False)
-            self.surface_twin_label.setText(self.surface_twin_label.text() + " · fewer than two varying numeric predictors")
+            self.surface_twin_label.setText(self.surface_twin_label.text() + " · fewer than two numeric predictors")
+        self.surface_x_combo.blockSignals(False); self.surface_y_combo.blockSignals(False)
+        self._update_surface_axis_ranges()
+        self._update_surface_composition_controls()
+        self._update_surface_build_state()
+
+    def _update_surface_axis_ranges(self, *_args) -> None:
+        artifact = self.context.active_twin_artifact
+        if artifact is None or not hasattr(self, "surface_x_min_spin"):
+            return
+        pairs = [
+            (self.surface_x_combo, self.surface_x_min_spin, self.surface_x_max_spin),
+            (self.surface_y_combo, self.surface_y_min_spin, self.surface_y_max_spin),
+        ]
+        sender = self.sender()
+        if sender is self.surface_x_combo:
+            pairs = pairs[:1]
+        elif sender is self.surface_y_combo:
+            pairs = pairs[1:]
+        for combo, low_spin, high_spin in pairs:
+            field = combo.currentData()
+            if not field:
+                continue
+            try:
+                low, high = self.service.twin_service.fitted_axis_range(artifact, str(field))
+            except (ValueError, TypeError):
+                continue
+            low_spin.blockSignals(True); high_spin.blockSignals(True)
+            low_spin.setValue(float(low)); high_spin.setValue(float(high))
+            low_spin.blockSignals(False); high_spin.blockSignals(False)
+        self._update_surface_composition_controls()
+        self._update_surface_build_state()
+
+    def _update_surface_composition_controls(self, *_args) -> None:
+        artifact = self.context.active_twin_artifact
+        if artifact is None or not hasattr(self, "surface_balance_combo"):
+            return
+        x_field = self.surface_x_combo.currentData()
+        y_field = self.surface_y_combo.currentData()
+        if not x_field or not y_field:
+            self.surface_balance_combo.setEnabled(False)
+            self.surface_closure_note.setText("Binder composition held at fitted defaults.")
+            self._update_surface_build_state()
+            return
+        current = self.surface_balance_combo.currentData()
+        candidates = self.service.twin_service.balance_binder_candidates(artifact, str(x_field), str(y_field))
+        self.surface_balance_combo.blockSignals(True)
+        self.surface_balance_combo.clear()
+        for field in candidates:
+            self.surface_balance_combo.addItem(COLUMN_LABELS.get(field, field), field)
+        if candidates:
+            preferred = current if current in candidates else self.service.twin_service.default_balance_binder(artifact, str(x_field), str(y_field))
+            index = self.surface_balance_combo.findData(preferred)
+            self.surface_balance_combo.setCurrentIndex(index if index >= 0 else 0)
+            self.surface_balance_combo.setEnabled(True)
+        else:
+            self.surface_balance_combo.setEnabled(False)
+        self.surface_balance_combo.blockSignals(False)
+        try:
+            plan = self.service.twin_service.composition_plan(
+                artifact, str(x_field), str(y_field), self.surface_balance_combo.currentData()
+            )
+            prefix = "Binder closure: " if plan.get("enabled") else ""
+            self.surface_closure_note.setText(prefix + str(plan.get("rule", "")))
+        except ValueError as error:
+            self.surface_closure_note.setText("Binder closure unavailable: " + str(error))
+        self._update_surface_build_state()
+
+    def _update_surface_build_state(self, *_args) -> None:
+        if not hasattr(self, "surface_build_button"):
+            return
+        artifact = self.context.active_twin_artifact
+        x_field = self.surface_x_combo.currentData() if hasattr(self, "surface_x_combo") else None
+        y_field = self.surface_y_combo.currentData() if hasattr(self, "surface_y_combo") else None
+        ranges_ok = (
+            self.surface_x_max_spin.value() > self.surface_x_min_spin.value()
+            and self.surface_y_max_spin.value() > self.surface_y_min_spin.value()
+        ) if hasattr(self, "surface_x_min_spin") else False
+        axes_ok = bool(artifact is not None and x_field and y_field and x_field != y_field)
+        composition_ok = True
+        composition_error = ""
+        if axes_ok:
+            try:
+                self.service.twin_service.composition_plan(
+                    artifact, str(x_field), str(y_field), self.surface_balance_combo.currentData()
+                )
+            except ValueError as error:
+                composition_ok = False
+                composition_error = str(error)
+        self.surface_build_button.setEnabled(bool(axes_ok and ranges_ok and composition_ok))
+        warnings: list[str] = []
+        if composition_error:
+            warnings.append(composition_error)
+        if axes_ok and not ranges_ok:
+            for label, low, high in (
+                (COLUMN_LABELS.get(str(x_field), str(x_field)), self.surface_x_min_spin.value(), self.surface_x_max_spin.value()),
+                (COLUMN_LABELS.get(str(y_field), str(y_field)), self.surface_y_min_spin.value(), self.surface_y_max_spin.value()),
+            ):
+                if high <= low:
+                    warnings.append(f"{label} has no exploration span. Enter a minimum smaller than the maximum.")
+        self.surface_range_warning.setText(("⚠ " + " ".join(warnings)) if warnings else "")
 
     def _refresh_specimen_fields(self, *_args) -> None:
         if not hasattr(self, "specimen_field_combo"):
@@ -271,8 +420,13 @@ class Visualization3DPage(QWidget):
             self.surface_result = self.service.build_surface(
                 artifact, self.context.dataframe, str(x_field), str(y_field),
                 resolution=self.surface_resolution_spin.value(), mode=self.surface_mode_combo.currentText(),
+                x_range=(self.surface_x_min_spin.value(), self.surface_x_max_spin.value()),
+                y_range=(self.surface_y_min_spin.value(), self.surface_y_max_spin.value()),
+                balance_field=self.surface_balance_combo.currentData(),
             )
             self._show_surface_metrics(); self.render_surface(); self.context.message.emit("3D response surface created from the active Digital Twin.")
+        except ValueError as error:
+            self.surface_range_warning.setText("⚠ " + str(error))
         except Exception as error:
             QMessageBox.critical(self, "Surface generation failed", str(error))
         finally:
@@ -284,10 +438,12 @@ class Visualization3DPage(QWidget):
         self.surface_min_pill.set_value(f"{summary['minimum_estimate']:.3f}"); self.surface_max_pill.set_value(f"{summary['maximum_estimate']:.3f}")
         self.surface_uncertainty_pill.set_value(f"{summary['mean_uncertainty_percent']:.1f}%", "success" if summary["mean_uncertainty_percent"] <= 15 else "warning")
         self.surface_support_pill.set_value(f"{summary['supported_area_percent']:.1f}%", "success" if summary["supported_area_percent"] >= 70 else "warning")
-        self.surface_nodes_pill.set_value(int(summary["map_nodes"])); self.surface_r2_pill.set_value(f"{metrics.get('r2', float('nan')):.3f}", "success" if metrics.get("r2", -1) >= 0.5 else "warning")
+        valid_nodes = int(summary.get("valid_map_nodes", summary["map_nodes"])); total_nodes = int(summary.get("total_map_nodes", summary["map_nodes"]))
+        self.surface_nodes_pill.set_value(f"{valid_nodes}/{total_nodes}"); self.surface_r2_pill.set_value(f"{metrics.get('r2', float('nan')):.3f}", "success" if metrics.get("r2", -1) >= 0.5 else "warning")
         rank = metadata.get("model_rank"); rank_text = f"rank #{rank}/7 · " if rank else ""
         self.surface_detail_label.setText(
-            f"Active twin · {metadata.get('method')} · {rank_text}{metadata.get('model_status', 'Unranked')} · {metadata.get('confidence_percent', 95):.0f}% empirical interval · {metadata.get('observations', '—')} fitted records."
+            f"Active twin · {metadata.get('method')} · {rank_text}{metadata.get('model_status', 'Unranked')} · {metadata.get('confidence_percent', 95):.0f}% empirical interval · {metadata.get('observations', '—')} fitted records. "
+            f"{self.surface_result.surface.attrs.get('binder_closure_rule', 'Binder composition held at fitted defaults.')}"
         )
 
     def render_surface(self) -> None:
@@ -334,9 +490,43 @@ class Visualization3DPage(QWidget):
         )
         self.specimen_detail_label.setText(
             f"{self.specimen_result.mix_id} · {self.specimen_result.analysis} · {self.specimen_result.field_type}. "
+            f"{self._mix_binder_summary(self.specimen_result.mix_id)}. "
             f"Field source: {self.specimen_result.field_source}. Capacity source: {self.specimen_result.capacity_source}. "
             f"{scale_text}{assumptions}"
         )
+
+    @staticmethod
+    def _artifact_binder_summary(metadata: dict) -> str:
+        defaults = metadata.get("input_defaults", {})
+        parts: list[str] = []
+        for field in BINDER_PERCENT_COLUMNS:
+            if field not in metadata.get("predictors", []):
+                continue
+            label = COLUMN_LABELS.get(field, field).replace(" (%)", "")
+            value = defaults.get(field)
+            try:
+                parts.append(f"{label} {float(value):g}%")
+            except (TypeError, ValueError):
+                parts.append(f"{label} {value if value is not None else '—'}")
+        return "Binder " + " · ".join(parts) if parts else "Binder composition not selected"
+
+    def _mix_binder_summary(self, mix_id: str) -> str:
+        dataframe = self.context.dataframe
+        if "mix_id" not in dataframe.columns:
+            return "Binder composition unavailable"
+        rows = dataframe.loc[dataframe["mix_id"].astype(str) == str(mix_id)]
+        if rows.empty:
+            return "Binder composition unavailable"
+        parts: list[str] = []
+        for field in BINDER_PERCENT_COLUMNS:
+            if field not in rows.columns:
+                continue
+            values = pd.to_numeric(rows[field], errors="coerce").dropna()
+            if values.empty:
+                continue
+            label = COLUMN_LABELS.get(field, field).replace(" (%)", "")
+            parts.append(f"{label} {float(values.iloc[0]):g}%")
+        return "Binder " + " · ".join(parts) if parts else "Binder composition unavailable"
 
     def render_specimen(self) -> None:
         if self.specimen_result is None: return

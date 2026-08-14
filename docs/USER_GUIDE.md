@@ -31,9 +31,10 @@ The selected theme, last workspace, sidebar state, and window geometry are prese
 1. In Predictive Models, choose a response and compatible predictors and run the seven-model comparison.
 2. Review RMSE/MAE/R², fold variability, model rank, and the dynamic one-word status.
 3. Open Digital Twin with the same response and effective predictor set. The ranking leader is selected as **Recommended**.
-4. Keep the recommended model or manually choose another ranked model. Build the twin and review uncertainty, interval coverage, nearest-data distance, range checks, and reliability.
-5. Open 3D Explorer. Response Surface uses that same active twin; it does not train a second model.
-6. Use Physics-Informed Specimen for compression, splitting tensile, flexural, or acid-degradation fields. Read the field-source/capacity-source statement before interpreting the plot.
+4. Treat FA (%), GGBS (%), and SF (%) as the three binder-composition inputs. In the bundled reference dataset SF is 10%; it remains visible in prediction/twin scenarios and is automatically sweepable when a future dataset contains multiple SF levels.
+5. Keep the recommended model or manually choose another ranked model. Build the twin and review uncertainty, interval coverage, nearest-data distance, range checks, and reliability.
+6. Open 3D Explorer. Response Surface uses that same active twin; it does not train a second model.
+7. Use Physics-Informed Specimen for compression, splitting tensile, flexural, or acid-degradation fields. Read the field-source/capacity-source statement before interpreting the plot.
 
 If the dataset is replaced, appended, restored, or verification states change, the ranking and active twin are invalidated so stale models cannot silently propagate.
 

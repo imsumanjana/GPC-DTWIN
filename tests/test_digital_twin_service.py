@@ -129,16 +129,23 @@ def test_response_map_100_by_100_has_explicit_grid_shape():
     assert all(len(figure.axes) >= 2 for figure in figures.values())
 
 
-def test_constant_numeric_range_is_not_offered_as_map_axis():
+def test_flat_numeric_range_remains_available_and_accepts_explicit_exploration_range():
     _, service, _, result = _build_result()
     artifact = copy.deepcopy(result.artifact)
     artifact["metadata"]["numeric_training_ranges"]["mechanical_test_age_days"] = [28.0, 28.0]
     candidates = service.map_axis_candidates(artifact)
-    assert "mechanical_test_age_days" not in candidates
-    with pytest.raises(ValueError, match="usable two-dimensional range"):
+    assert "mechanical_test_age_days" in candidates
+    with pytest.raises(ValueError, match="explicit exploration minimum and maximum"):
         service.response_map(
-            artifact, "ggbs_percent_numeric", "mechanical_test_age_days", resolution=100
+            artifact, "ggbs_percent_numeric", "mechanical_test_age_days", resolution=20
         )
+    surface = service.response_map(
+        artifact, "ggbs_percent_numeric", "mechanical_test_age_days", resolution=20,
+        y_range=(7.0, 56.0),
+    )
+    assert len(surface) == 400
+    assert surface.attrs["y_range"] == (7.0, 56.0)
+    assert surface.attrs["y_range_extrapolative"] is True
 
 
 def test_calibration_outputs_are_separate_tab_ready_figures():

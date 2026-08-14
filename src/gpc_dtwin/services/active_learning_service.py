@@ -17,7 +17,9 @@ from scipy.stats import norm, qmc
 
 from gpc_dtwin import __version__
 from gpc_dtwin.chart_style import apply_chart_style
-from gpc_dtwin.columns import COLUMN_LABELS, DATA_COLUMNS, MODEL_NUMERIC_PREDICTORS
+from gpc_dtwin.columns import (
+    BINDER_PERCENT_COLUMNS, COLUMN_LABELS, DATA_COLUMNS, MODEL_NUMERIC_PREDICTORS,
+)
 from gpc_dtwin.services.digital_twin_service import DigitalTwinService, TwinBuildResult
 
 
@@ -71,9 +73,7 @@ class UpdateComparisonResult:
 class ActiveLearningService:
     """Recommend informative material scenarios from uncertainty-aware surrogates."""
 
-    COMPOSITION_FIELDS = (
-        "fa_percent_numeric", "ggbs_percent_numeric", "sf_percent_numeric"
-    )
+    COMPOSITION_FIELDS = tuple(BINDER_PERCENT_COLUMNS)
 
     @staticmethod
     def method_names() -> list[str]:

@@ -1,7 +1,50 @@
-# GPC-DTwin 1.2.2 Release Notes
+# GPC-DTwin 1.2.6 Release Notes
 
 Copyright © 2026 Dr. Suman Jana. All rights reserved.  
 ORCID: https://orcid.org/0000-0002-9850-2169
+
+
+## Response-surface geometry correction
+
+Version 1.2.6 prevents misleading triangular/extrapolation-dominated response surfaces when the fitted binder data do not span two independent composition directions.
+
+- Stores the empirical rank of the FA–GGBS–SF composition cloud in each newly built Digital Twin.
+- The bundled reference data have one binder-composition degree of freedom because SF is 10% while FA and GGBS trade off; a two-binder 2D surface is therefore disabled for this dataset rather than rendered as a mostly unsupported simplex.
+- SF remains a first-class selectable predictor. It can be paired with an independently varying process/condition predictor and can be explored beyond 10% only by entering an explicit range; reliability still flags extrapolation.
+- Chooses a supported default surface automatically. With the reference compressive-strength twin this is GGBS (%) × AAS:B ratio when both are fitted predictors, while FA is derived by closure and SF is held at 10%.
+- Future datasets with genuine independent SF variation automatically obtain binder-composition rank 2, at which point two-binder composition surfaces become available.
+- Removes the generic invalid-composition warning from ordinary one-binder response surfaces; an explicit blocking explanation is shown only when the selected axis pair is unsupported.
+- Filters the 3D observation overlay to the same fitted cross-section as the surface, so observations from different ages, curing regimes, or other held predictor values are not plotted on an unrelated response slice.
+
+## Composition-aware response space
+
+Version 1.2.5 enforces the physical binder closure `FA + GGBS + SF = 100%` whenever binder percentages are explored in Digital Twin Response Maps or the 3D Response Surface.
+
+- With two binder axes, the third binder is derived automatically at every grid point.
+- With one binder axis and one non-binder axis, a **Balance binder** selector determines which second binder changes while the third binder stays at its fitted default.
+- Compositionally impossible points are masked, exported as `composition_valid = False`, assigned no prediction, and shown as blank regions rather than being passed to the surrogate model.
+- Response-grid exports preserve all three binder percentages plus the closure rule, derived/balance binder, and valid/invalid point counts.
+- 3D Explorer reports valid/total grid nodes so triangular or clipped composition domains are explicit.
+- Flat fitted ranges such as current-reference SF = 10–10% now produce a non-blocking warning and keep Build/Generate disabled until the user enters a genuine exploration span.
+- Custom/legacy twins that do not contain all three binder predictors continue to work, but their response view states that binder closure is not enforceable until FA, GGBS, and SF are all included.
+
+## FA–GGBS–SF first-class binder composition
+
+Version 1.2.5 makes silica fume visibly and structurally equivalent to fly ash and GGBS throughout the analytics pipeline.
+
+- Introduces one shared FA/GGBS/SF binder-composition definition used by modelling, Digital Twin, optimisation, active learning, analytics, reporting, and 3D provenance.
+- Keeps `SF (%)` in the default Predictive Models input set even when the current reference dataset contains only 10% SF.
+- Keeps SF in saved model/twin metadata, prediction scenarios, feature-influence tables/charts, training ranges, and binder provenance.
+- Adds a dedicated FA–GGBS–SF binder-composition chart.
+- Updates 28-day strength and UPV analytical charts to show the response together with FA, GGBS, and SF rather than presenting GGBS alone.
+- Updates report strength graphics to include all three binder components.
+- Makes Statistical Analysis regression defaults include FA, GGBS, and SF together.
+- Shows active FA/GGBS/SF composition in Digital Twin and 3D Explorer provenance.
+- Retains the current fitted SF value/range (10%, 10–10%) without disabling or removing SF.
+- Exposes SF in Digital Twin Response Maps and the 3D Response Surface even when the fitted SF range is currently 10–10%.
+- Adds editable X/Y exploration minimum and maximum controls. A flat fitted parameter such as SF starts at 10–10%; the user can explicitly expand the exploration interval when a what-if sweep is required.
+- Keeps all extrapolative SF sweep points inside the existing Digital Twin domain/reliability checks instead of silently treating them as in-domain evidence.
+- Future imported datasets with genuine SF variation automatically populate the fitted SF limits, so no manual range expansion is needed.
 
 ## Validated workflow hand-off and gating
 

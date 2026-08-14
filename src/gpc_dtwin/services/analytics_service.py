@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
+from gpc_dtwin.columns import BINDER_PERCENT_COLUMNS, COLUMN_LABELS
+
 
 @dataclass(frozen=True)
 class ChartDefinition:
@@ -20,8 +22,12 @@ class ChartDefinition:
 class AnalyticsService:
     CHARTS = [
         ChartDefinition(
+            "binder_composition", "Binder composition profile",
+            "FA, GGBS, and silica-fume contents across the available mixes."
+        ),
+        ChartDefinition(
             "compressive_28d", "28-day compressive strength",
-            "Compressive strength across mix compositions under ambient curing."
+            "28-day compressive strength together with FA, GGBS, and SF composition."
         ),
         ChartDefinition(
             "strength_age", "Mechanical properties by age",
@@ -44,8 +50,8 @@ class AnalyticsService:
             "Relationship between rebound-estimated and ambient compressive strength."
         ),
         ChartDefinition(
-            "upv_ggbs", "UPV response to GGBS content",
-            "Ultrasonic pulse velocity across binder compositions."
+            "upv_ggbs", "UPV and binder composition",
+            "Ultrasonic pulse velocity together with FA, GGBS, and SF composition."
         ),
         ChartDefinition(
             "acid_residual", "Residual strength after exposure",
@@ -71,6 +77,7 @@ class AnalyticsService:
         if dataframe.empty:
             return self._empty_figure("No data available")
         creators = {
+            "binder_composition": self._binder_composition,
             "compressive_28d": self._compressive_28d,
             "strength_age": lambda df: self._strength_age(df, mix_id),
             "strength_growth": self._strength_growth,
@@ -105,23 +112,81 @@ class AnalyticsService:
             return pd.DataFrame()
         return df[df["record_group"] == name].copy()
 
+    @staticmethod
+    def _mix_sort_key(series: pd.Series) -> pd.Series:
+        """Return a stable numeric ordering for labels such as M1 ... M10."""
+        extracted = series.astype(str).str.extract(r"(\d+)", expand=False)
+        return pd.to_numeric(extracted, errors="coerce")
+
+    @classmethod
+    def _binder_frame(cls, df: pd.DataFrame, group: str | None = None) -> pd.DataFrame:
+        """Return one composition row per mix with FA, GGBS, and SF preserved together."""
+        source = cls._group(df, group) if group else df.copy()
+        required = ["mix_id", *BINDER_PERCENT_COLUMNS]
+        if source.empty or not all(column in source.columns for column in required):
+            return pd.DataFrame(columns=required)
+        frame = source[required].copy()
+        for column in BINDER_PERCENT_COLUMNS:
+            frame[column] = pd.to_numeric(frame[column], errors="coerce")
+        frame = frame.dropna(subset=["mix_id"]).drop_duplicates(subset=["mix_id"], keep="first")
+        frame["_mix_order"] = cls._mix_sort_key(frame["mix_id"])
+        frame = frame.sort_values(["_mix_order", "mix_id"], na_position="last").drop(columns="_mix_order")
+        return frame.reset_index(drop=True)
+
+    @staticmethod
+    def _add_binder_lines(axis, frame: pd.DataFrame) -> None:
+        """Plot FA, GGBS, and SF on one common percentage axis."""
+        for column in BINDER_PERCENT_COLUMNS:
+            if column not in frame.columns:
+                continue
+            values = pd.to_numeric(frame[column], errors="coerce")
+            if values.notna().any():
+                axis.plot(
+                    frame["mix_id"], values,
+                    marker="o", linewidth=1.4,
+                    label=COLUMN_LABELS.get(column, column),
+                )
+        axis.set_ylabel("Binder content (%)")
+        axis.set_ylim(0, 100)
+        axis.grid(True, axis="y", alpha=0.20)
+
+    def _binder_composition(self, df: pd.DataFrame) -> Figure:
+        frame = self._binder_frame(df, "AMBIENT_28D_MECHANICAL")
+        if frame.empty:
+            frame = self._binder_frame(df)
+        if frame.empty:
+            return self._empty_figure("Binder-composition fields are unavailable")
+        figure, axis = self._figure()
+        self._add_binder_lines(axis, frame)
+        axis.set_xlabel("Mix ID")
+        axis.set_title("FA–GGBS–SF binder composition")
+        axis.legend()
+        return figure
+
     def _compressive_28d(self, df: pd.DataFrame) -> Figure:
         subset = self._group(df, "AMBIENT_28D_MECHANICAL")
         if subset.empty:
             return self._empty_figure("No 28-day ambient records")
-        subset["ggbs_percent_numeric"] = pd.to_numeric(subset["ggbs_percent_numeric"], errors="coerce")
         subset["compressive_strength_mpa"] = pd.to_numeric(subset["compressive_strength_mpa"], errors="coerce")
-        subset = subset.dropna(subset=["ggbs_percent_numeric", "compressive_strength_mpa"]).sort_values(
-            "ggbs_percent_numeric"
+        subset["_mix_order"] = self._mix_sort_key(subset["mix_id"])
+        subset = subset.dropna(subset=["compressive_strength_mpa"]).sort_values(
+            ["_mix_order", "mix_id"], na_position="last"
         )
         figure, axis = self._figure()
-        axis.plot(subset["ggbs_percent_numeric"], subset["compressive_strength_mpa"], marker="o")
+        axis.plot(subset["mix_id"], subset["compressive_strength_mpa"], marker="o", label="Compressive strength")
         for _, row in subset.iterrows():
-            axis.annotate(str(row["mix_id"]), (row["ggbs_percent_numeric"], row["compressive_strength_mpa"]),
+            axis.annotate(f"{row['compressive_strength_mpa']:.2f}", (row["mix_id"], row["compressive_strength_mpa"]),
                           xytext=(4, 5), textcoords="offset points", fontsize=8)
-        axis.set_xlabel("GGBS content (%)")
+        axis.set_xlabel("Mix ID")
         axis.set_ylabel("Compressive strength (MPa)")
         axis.grid(True, alpha=0.25)
+        binder = self._binder_frame(subset)
+        if not binder.empty:
+            binder_axis = axis.twinx()
+            self._add_binder_lines(binder_axis, binder)
+            handles1, labels1 = axis.get_legend_handles_labels()
+            handles2, labels2 = binder_axis.get_legend_handles_labels()
+            axis.legend(handles1 + handles2, labels1 + labels2, loc="best")
         return figure
 
     def _strength_age(self, df: pd.DataFrame, mix_id: str) -> Figure:
@@ -228,17 +293,24 @@ class AnalyticsService:
         subset = self._group(df, "NON_DESTRUCTIVE_TESTS").copy()
         if subset.empty:
             return self._empty_figure("No UPV records")
-        subset["ggbs_percent_numeric"] = pd.to_numeric(subset["ggbs_percent_numeric"], errors="coerce")
         subset["upv_m_s"] = pd.to_numeric(subset["upv_m_s"], errors="coerce")
-        subset = subset.dropna(subset=["ggbs_percent_numeric", "upv_m_s"]).sort_values("ggbs_percent_numeric")
+        subset["_mix_order"] = self._mix_sort_key(subset["mix_id"])
+        subset = subset.dropna(subset=["upv_m_s"]).sort_values(["_mix_order", "mix_id"], na_position="last")
         figure, axis = self._figure()
-        axis.plot(subset["ggbs_percent_numeric"], subset["upv_m_s"], marker="o")
+        axis.plot(subset["mix_id"], subset["upv_m_s"], marker="o", label="UPV")
         for _, row in subset.iterrows():
-            axis.annotate(str(row["mix_id"]), (row["ggbs_percent_numeric"], row["upv_m_s"]),
+            axis.annotate(f"{row['upv_m_s']:.0f}", (row["mix_id"], row["upv_m_s"]),
                           xytext=(4, 5), textcoords="offset points", fontsize=8)
-        axis.set_xlabel("GGBS content (%)")
+        axis.set_xlabel("Mix ID")
         axis.set_ylabel("UPV (m/s)")
         axis.grid(True, alpha=0.25)
+        binder = self._binder_frame(subset)
+        if not binder.empty:
+            binder_axis = axis.twinx()
+            self._add_binder_lines(binder_axis, binder)
+            handles1, labels1 = axis.get_legend_handles_labels()
+            handles2, labels2 = binder_axis.get_legend_handles_labels()
+            axis.legend(handles1 + handles2, labels1 + labels2, loc="best")
         return figure
 
     def _acid_residual(self, df: pd.DataFrame) -> Figure:

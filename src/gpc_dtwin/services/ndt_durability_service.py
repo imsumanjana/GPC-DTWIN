@@ -25,7 +25,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVR
 
 from gpc_dtwin import __version__
-from gpc_dtwin.columns import COLUMN_LABELS
+from gpc_dtwin.columns import BINDER_PERCENT_COLUMNS, COLUMN_LABELS
 from gpc_dtwin.services.digital_twin_service import DigitalTwinService, TwinBuildResult
 
 
@@ -35,11 +35,9 @@ NDT_FEATURE_SETS: dict[str, tuple[str, ...]] = {
     "UPV only": ("upv_m_s",),
     "Rebound only": ("rebound_estimated_strength_mpa",),
     "UPV + Rebound": ("upv_m_s", "rebound_estimated_strength_mpa"),
-    "Composition only": (
-        "fa_percent_numeric", "ggbs_percent_numeric", "sf_percent_numeric"
-    ),
+    "Composition only": tuple(BINDER_PERCENT_COLUMNS),
     "Composition + NDT": (
-        "fa_percent_numeric", "ggbs_percent_numeric", "sf_percent_numeric",
+        *BINDER_PERCENT_COLUMNS,
         "upv_m_s", "rebound_estimated_strength_mpa",
     ),
 }
@@ -63,7 +61,7 @@ DURABILITY_RESPONSES = [
 ]
 
 DURABILITY_DEFAULT_PREDICTORS = [
-    "fa_percent_numeric", "ggbs_percent_numeric", "sf_percent_numeric",
+    *BINDER_PERCENT_COLUMNS,
     "initial_compressive_strength_mpa", "acid_type",
     "acid_concentration_percent", "acid_exposure_days",
 ]
@@ -196,9 +194,7 @@ class NDTDurabilityService:
             raise ValueError("No usable NDT records are available.")
 
         composition = [
-            column for column in (
-                "fa_percent_numeric", "ggbs_percent_numeric", "sf_percent_numeric"
-            ) if column in filtered.columns
+            column for column in BINDER_PERCENT_COLUMNS if column in filtered.columns
         ]
         for frame in (mechanical, ndt):
             for column in [
@@ -545,7 +541,7 @@ class NDTDurabilityService:
             raise ValueError("No usable durability records are available.")
 
         numeric_columns = [
-            "fa_percent_numeric", "ggbs_percent_numeric", "sf_percent_numeric",
+            *BINDER_PERCENT_COLUMNS,
             "acid_concentration_percent", "acid_exposure_days", "initial_mass_kg",
             "exposed_mass_kg", "mass_change_percent_derived",
             "initial_compressive_strength_mpa", "residual_compressive_strength_mpa",

@@ -21,7 +21,9 @@ from sklearn.neighbors import NearestNeighbors
 
 from gpc_dtwin import __version__
 from gpc_dtwin.chart_style import apply_chart_style
-from gpc_dtwin.columns import COLUMN_LABELS, MODEL_NUMERIC_PREDICTORS, quantity_label
+from gpc_dtwin.columns import (
+    BINDER_PERCENT_COLUMNS, COLUMN_LABELS, MODEL_NUMERIC_PREDICTORS, quantity_label,
+)
 from gpc_dtwin.field_compatibility import assess_usable_fields, clean_selected_frame
 from gpc_dtwin.services.model_registry import algorithm_names, build_estimator, build_preprocessor
 
@@ -377,6 +379,23 @@ class DigitalTwinService:
         # Fixed plotting scales make colour meaning stable when response-map axes change.
         # The distance multiplier is capped at 2.0, therefore the theoretical maximum
         # uncertainty/interval width for this fitted twin is deterministic.
+        numeric_unique_counts = {
+            column: int(pd.to_numeric(working[column], errors="coerce").dropna().nunique())
+            for column in usable_predictors
+            if column in MODEL_NUMERIC_PREDICTORS and column in working.columns
+        }
+        binder_training = [
+            field for field in BINDER_PERCENT_COLUMNS
+            if field in usable_predictors and field in working.columns
+        ]
+        binder_rank = 0
+        binder_unique_points = 0
+        if len(binder_training) == len(BINDER_PERCENT_COLUMNS):
+            binder_frame = working[list(BINDER_PERCENT_COLUMNS)].apply(pd.to_numeric, errors="coerce").dropna()
+            if not binder_frame.empty:
+                binder_unique_points = int(len(binder_frame.drop_duplicates()))
+                centered = binder_frame.to_numpy(dtype=float) - binder_frame.to_numpy(dtype=float).mean(axis=0, keepdims=True)
+                binder_rank = int(np.clip(np.linalg.matrix_rank(centered, tol=1e-9), 0, 2))
         color_scales = {
             "estimated_response": [float(np.min(y)), float(np.max(y))],
             "relative_uncertainty": [
@@ -409,6 +428,22 @@ class DigitalTwinService:
             "input_defaults": defaults,
             "input_categories": categories,
             "numeric_training_ranges": numeric_ranges,
+            "numeric_training_unique_counts": numeric_unique_counts,
+            "binder_composition_rank": binder_rank,
+            "binder_composition_unique_points": binder_unique_points,
+            "binder_percent_predictors": [
+                column for column in BINDER_PERCENT_COLUMNS if column in usable_predictors
+            ],
+            "binder_percent_defaults": {
+                column: defaults.get(column)
+                for column in BINDER_PERCENT_COLUMNS
+                if column in usable_predictors
+            },
+            "binder_percent_training_ranges": {
+                column: numeric_ranges.get(column)
+                for column in BINDER_PERCENT_COLUMNS
+                if column in usable_predictors and column in numeric_ranges
+            },
             "response_training_range": [float(np.min(y)), float(np.max(y))],
             "figure_color_scales": color_scales,
             "training_distance_quantiles": distance_quantiles,
@@ -608,6 +643,14 @@ class DigitalTwinService:
 
     @staticmethod
     def map_axis_candidates(artifact: dict[str, Any]) -> list[str]:
+        """Return every numeric predictor that can be used as a response-view axis.
+
+        A predictor is intentionally retained even when its fitted range is currently flat
+        (for example SF = 10% in the reference campaign).  The GUI can then expose the
+        parameter consistently and, when required, the user can provide an explicit
+        exploration range.  Out-of-domain points remain flagged by the Digital Twin
+        reliability calculation.
+        """
         DigitalTwinService._validate_artifact(artifact)
         metadata = artifact["metadata"]
         ranges = metadata.get("numeric_training_ranges", {})
@@ -616,10 +659,339 @@ class DigitalTwinService:
             limits = ranges.get(column)
             if not isinstance(limits, (list, tuple)) or len(limits) != 2:
                 continue
-            low, high = float(limits[0]), float(limits[1])
-            if np.isfinite(low) and np.isfinite(high) and high - low > 1e-12:
+            try:
+                low, high = float(limits[0]), float(limits[1])
+            except (TypeError, ValueError):
+                continue
+            if np.isfinite(low) and np.isfinite(high):
                 candidates.append(column)
         return candidates
+
+    @staticmethod
+    def fitted_axis_range(artifact: dict[str, Any], field: str) -> tuple[float, float]:
+        DigitalTwinService._validate_artifact(artifact)
+        metadata = artifact["metadata"]
+        ranges = metadata.get("numeric_training_ranges", {})
+        limits = ranges.get(field)
+        if not isinstance(limits, (list, tuple)) or len(limits) != 2:
+            raise ValueError(f"{COLUMN_LABELS.get(field, field)} does not have a numeric fitted range.")
+        low, high = float(limits[0]), float(limits[1])
+        if not np.isfinite(low) or not np.isfinite(high):
+            raise ValueError(f"{COLUMN_LABELS.get(field, field)} does not have a finite fitted range.")
+        return low, high
+
+    @staticmethod
+    def binder_axis_candidates(artifact: dict[str, Any]) -> list[str]:
+        """Return FA, GGBS, and SF predictors available to the active twin."""
+        DigitalTwinService._validate_artifact(artifact)
+        predictors = set(artifact["metadata"].get("predictors", []))
+        return [field for field in BINDER_PERCENT_COLUMNS if field in predictors]
+
+    @classmethod
+    def balance_binder_candidates(
+        cls, artifact: dict[str, Any], x_field: str, y_field: str | None = None
+    ) -> list[str]:
+        """Return binder components that may absorb a one-axis composition change."""
+        binder_predictors = cls.binder_axis_candidates(artifact)
+        axis_fields = {field for field in (x_field, y_field) if field}
+        binder_axes = [field for field in BINDER_PERCENT_COLUMNS if field in axis_fields]
+        if not binder_axes:
+            return []
+        if len(binder_predictors) != len(BINDER_PERCENT_COLUMNS):
+            return []
+        if len(binder_axes) != 1:
+            return []
+        return [field for field in BINDER_PERCENT_COLUMNS if field not in axis_fields]
+
+    @classmethod
+    def default_balance_binder(
+        cls, artifact: dict[str, Any], x_field: str, y_field: str | None = None
+    ) -> str | None:
+        candidates = cls.balance_binder_candidates(artifact, x_field, y_field)
+        if not candidates:
+            return None
+        defaults = artifact["metadata"].get("input_defaults", {})
+        def score(field: str) -> tuple[float, int]:
+            try:
+                value = float(defaults.get(field, 0.0))
+            except (TypeError, ValueError):
+                value = 0.0
+            # Prefer the largest available binder fraction; preserve canonical order on ties.
+            return value, -BINDER_PERCENT_COLUMNS.index(field)
+        return max(candidates, key=score)
+
+    @classmethod
+    def binder_composition_rank(cls, artifact: dict[str, Any]) -> int:
+        """Return the empirically supported independent binder-composition dimension.
+
+        FA + GGBS + SF is a closed composition, so at most two independent
+        binder directions can exist. New artifacts store the exact numerical
+        rank of the centered training compositions. Older artifacts fall back
+        to the number of varying binder fractions minus one.
+        """
+        cls._validate_artifact(artifact)
+        metadata = artifact["metadata"]
+        stored = metadata.get("binder_composition_rank")
+        if stored is not None:
+            try:
+                return int(np.clip(int(stored), 0, 2))
+            except (TypeError, ValueError):
+                pass
+        ranges = metadata.get("binder_percent_training_ranges", {}) or {}
+        varying = 0
+        for field in BINDER_PERCENT_COLUMNS:
+            limits = ranges.get(field)
+            if isinstance(limits, (list, tuple)) and len(limits) == 2:
+                try:
+                    if float(limits[1]) - float(limits[0]) > 1e-12:
+                        varying += 1
+                except (TypeError, ValueError):
+                    continue
+        return int(np.clip(max(varying - 1, 0), 0, 2))
+
+    @classmethod
+    def response_axis_pair_support(
+        cls, artifact: dict[str, Any], x_field: str, y_field: str | None
+    ) -> tuple[bool, str]:
+        """Check whether a 2D response view is empirically supported enough to render."""
+        if not y_field:
+            return True, ""
+        binder_axes = [
+            field for field in (x_field, y_field) if field in BINDER_PERCENT_COLUMNS
+        ]
+        if len(binder_axes) == 2 and cls.binder_composition_rank(artifact) < 2:
+            ranges = artifact["metadata"].get("binder_percent_training_ranges", {}) or {}
+            flat = []
+            for field in BINDER_PERCENT_COLUMNS:
+                limits = ranges.get(field)
+                if isinstance(limits, (list, tuple)) and len(limits) == 2:
+                    try:
+                        if abs(float(limits[1]) - float(limits[0])) <= 1e-12:
+                            flat.append(
+                                f"{COLUMN_LABELS.get(field, field)} = {float(limits[0]):g}"
+                            )
+                    except (TypeError, ValueError):
+                        pass
+            detail = f" ({'; '.join(flat)})" if flat else ""
+            return False, (
+                "The fitted data contain only one independent binder-composition direction"
+                + detail
+                + ". A two-binder 2D surface would therefore be dominated by extrapolation. "
+                  "Choose one binder axis and one independently varying predictor. "
+                  "SF remains available as a normal binder variable and becomes a fully supported "
+                  "binder-surface axis when future data provide independent SF variation."
+            )
+        return True, ""
+
+    @classmethod
+    def preferred_response_axes(cls, artifact: dict[str, Any]) -> tuple[str | None, str | None]:
+        """Choose a non-degenerate default 2D view from the fitted predictor geometry."""
+        candidates = cls.map_axis_candidates(artifact)
+        if len(candidates) < 2:
+            return (candidates[0], None) if candidates else (None, None)
+        metadata = artifact["metadata"]
+        ranges = metadata.get("numeric_training_ranges", {}) or {}
+        unique_counts = metadata.get("numeric_training_unique_counts", {}) or {}
+
+        def varying(field: str) -> bool:
+            limits = ranges.get(field)
+            if not isinstance(limits, (list, tuple)) or len(limits) != 2:
+                return False
+            try:
+                return float(limits[1]) - float(limits[0]) > 1e-12
+            except (TypeError, ValueError):
+                return False
+
+        # Prefer one varying binder composition variable and one independently
+        # varying process/condition variable. This creates a rectangular,
+        # interpretable surface while closure adjusts the balancing binder.
+        binder_preference = [
+            field for field in (
+                "ggbs_percent_numeric", "fa_percent_numeric", "sf_percent_numeric"
+            ) if field in candidates and varying(field)
+        ]
+        non_binders = [
+            field for field in candidates
+            if field not in BINDER_PERCENT_COLUMNS and varying(field)
+        ]
+        non_binders.sort(
+            key=lambda field: (-int(unique_counts.get(field, 0) or 0), candidates.index(field))
+        )
+        if binder_preference and non_binders:
+            return binder_preference[0], non_binders[0]
+
+        # Otherwise find the first empirically supported varying pair.
+        varying_candidates = [field for field in candidates if varying(field)]
+        for i, x_field in enumerate(varying_candidates):
+            for y_field in varying_candidates[i + 1:]:
+                supported, _ = cls.response_axis_pair_support(artifact, x_field, y_field)
+                if supported:
+                    return x_field, y_field
+
+        # Last resort: keep all first-class predictors visible even if a range
+        # is currently flat; the UI will require an explicit exploration span.
+        for i, x_field in enumerate(candidates):
+            for y_field in candidates[i + 1:]:
+                supported, _ = cls.response_axis_pair_support(artifact, x_field, y_field)
+                if supported:
+                    return x_field, y_field
+        return candidates[0], candidates[1]
+
+    @classmethod
+    def composition_plan(
+        cls, artifact: dict[str, Any], x_field: str, y_field: str | None = None,
+        balance_field: str | None = None,
+    ) -> dict[str, Any]:
+        """Describe how FA + GGBS + SF = 100% is enforced for a response view."""
+        cls._validate_artifact(artifact)
+        predictors = set(artifact["metadata"].get("predictors", []))
+        axis_fields = [field for field in (x_field, y_field) if field]
+        binder_axes = [field for field in axis_fields if field in BINDER_PERCENT_COLUMNS]
+        if not binder_axes:
+            return {
+                "enabled": False, "mode": "defaults", "axis_binders": [],
+                "derived_binder": None, "balance_binder": None, "fixed_binder": None,
+                "rule": "Binder composition held at fitted defaults.",
+            }
+        missing = [field for field in BINDER_PERCENT_COLUMNS if field not in predictors]
+        if missing:
+            labels = ", ".join(COLUMN_LABELS.get(field, field) for field in missing)
+            return {
+                "enabled": False, "mode": "incomplete_binder_predictors",
+                "axis_binders": binder_axes, "derived_binder": None,
+                "balance_binder": None, "fixed_binder": None,
+                "rule": (
+                    "Binder closure is unavailable because the active twin omitted " + labels
+                    + ". Rebuild with FA (%), GGBS (%), and SF (%) to enforce FA + GGBS + SF = 100%."
+                ),
+            }
+        if len(binder_axes) == 2:
+            supported, message = cls.response_axis_pair_support(artifact, binder_axes[0], binder_axes[1])
+            if not supported:
+                raise ValueError(message)
+            derived = next(field for field in BINDER_PERCENT_COLUMNS if field not in binder_axes)
+            x_label = COLUMN_LABELS.get(binder_axes[0], binder_axes[0])
+            y_label = COLUMN_LABELS.get(binder_axes[1], binder_axes[1])
+            d_label = COLUMN_LABELS.get(derived, derived)
+            return {
+                "enabled": True, "mode": "two_binder_axes", "axis_binders": binder_axes,
+                "derived_binder": derived, "balance_binder": None, "fixed_binder": None,
+                "rule": f"{d_label} = 100 - {x_label} - {y_label}.",
+            }
+        if len(binder_axes) == 1:
+            axis_binder = binder_axes[0]
+            candidates = cls.balance_binder_candidates(artifact, x_field, y_field)
+            selected = balance_field or cls.default_balance_binder(artifact, x_field, y_field)
+            if selected not in candidates:
+                choices = ", ".join(COLUMN_LABELS.get(field, field) for field in candidates)
+                raise ValueError(
+                    "Select a valid balance binder for the response view. "
+                    + (f"Available: {choices}." if choices else "No balance binder is available.")
+                )
+            fixed = next(
+                field for field in BINDER_PERCENT_COLUMNS
+                if field not in {axis_binder, selected}
+            )
+            defaults = artifact["metadata"].get("input_defaults", {})
+            try:
+                fixed_value = float(defaults.get(fixed))
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f"A numeric fitted default is required for {COLUMN_LABELS.get(fixed, fixed)}."
+                )
+            if not np.isfinite(fixed_value):
+                raise ValueError(
+                    f"A finite fitted default is required for {COLUMN_LABELS.get(fixed, fixed)}."
+                )
+            return {
+                "enabled": True, "mode": "one_binder_axis", "axis_binders": binder_axes,
+                "derived_binder": selected, "balance_binder": selected, "fixed_binder": fixed,
+                "fixed_value": fixed_value,
+                "rule": (
+                    f"{COLUMN_LABELS.get(selected, selected)} = 100 - "
+                    f"{COLUMN_LABELS.get(axis_binder, axis_binder)} - "
+                    f"{COLUMN_LABELS.get(fixed, fixed)}; "
+                    f"{COLUMN_LABELS.get(fixed, fixed)} held at {fixed_value:g}%."
+                ),
+            }
+        raise ValueError("A response view can use at most two binder-composition axes.")
+
+    @classmethod
+    def _apply_binder_closure(
+        cls, artifact: dict[str, Any], frame: pd.DataFrame, x_field: str,
+        y_field: str | None = None, balance_field: str | None = None,
+    ) -> tuple[pd.DataFrame, np.ndarray, dict[str, Any]]:
+        plan = cls.composition_plan(artifact, x_field, y_field, balance_field)
+        working = frame.copy()
+        if plan["enabled"]:
+            if plan["mode"] == "two_binder_axes":
+                a, b = plan["axis_binders"]
+                derived = plan["derived_binder"]
+                working[derived] = 100.0 - pd.to_numeric(working[a], errors="coerce") - pd.to_numeric(working[b], errors="coerce")
+            else:
+                axis_binder = plan["axis_binders"][0]
+                derived = plan["derived_binder"]
+                fixed = plan["fixed_binder"]
+                fixed_value = float(plan["fixed_value"])
+                working[fixed] = fixed_value
+                working[derived] = 100.0 - pd.to_numeric(working[axis_binder], errors="coerce") - fixed_value
+            for binder in BINDER_PERCENT_COLUMNS:
+                values = pd.to_numeric(working[binder], errors="coerce")
+                values = values.mask(values.abs() <= 1e-9, 0.0)
+                values = values.mask((values - 100.0).abs() <= 1e-9, 100.0)
+                working[binder] = values
+        valid = np.ones(len(working), dtype=bool)
+        if plan["enabled"]:
+            numeric = working[BINDER_PERCENT_COLUMNS].apply(pd.to_numeric, errors="coerce")
+            finite = np.isfinite(numeric.to_numpy(dtype=float)).all(axis=1)
+            within = ((numeric >= -1e-9) & (numeric <= 100.0 + 1e-9)).all(axis=1).to_numpy()
+            closed = np.isclose(numeric.sum(axis=1).to_numpy(dtype=float), 100.0, atol=1e-7)
+            valid = finite & within & closed
+        return working, np.asarray(valid, dtype=bool), plan
+
+    @classmethod
+    def _predict_with_composition_mask(
+        cls, artifact: dict[str, Any], frame: pd.DataFrame, valid_mask: np.ndarray
+    ) -> pd.DataFrame:
+        if not np.any(valid_mask):
+            raise ValueError(
+                "The selected ranges contain no valid binder composition. FA (%), GGBS (%), and SF (%) "
+                "must each remain between 0 and 100 and sum to 100%."
+            )
+        valid_index = frame.index[np.asarray(valid_mask, dtype=bool)]
+        valid_predictions = cls.predict_dataframe(artifact, frame.loc[valid_index].copy())
+        valid_predictions.index = valid_index
+        predictions = valid_predictions.reindex(frame.index)
+        predictions["composition_valid"] = np.asarray(valid_mask, dtype=bool)
+        invalid = ~np.asarray(valid_mask, dtype=bool)
+        if invalid.any():
+            predictions.loc[invalid, "reliability_class"] = "Invalid"
+            predictions.loc[invalid, "reliability_reason"] = (
+                "Invalid binder composition: FA (%), GGBS (%), and SF (%) must each be between "
+                "0 and 100 and sum to 100%."
+            )
+            predictions.loc[invalid, "outside_training_range_fields"] = "binder_composition"
+        return predictions
+
+    @classmethod
+    def _resolve_axis_range(
+        cls, artifact: dict[str, Any], field: str, requested: tuple[float, float] | None
+    ) -> tuple[float, float, bool]:
+        fitted_low, fitted_high = cls.fitted_axis_range(artifact, field)
+        if requested is None:
+            low, high = fitted_low, fitted_high
+        else:
+            low, high = map(float, requested)
+        if not np.isfinite(low) or not np.isfinite(high) or high <= low:
+            label = COLUMN_LABELS.get(field, field)
+            if abs(fitted_high - fitted_low) <= 1e-12:
+                raise ValueError(
+                    f"{label} is represented at {fitted_low:g} in the fitted data. "
+                    "Set an explicit exploration minimum and maximum to use it as an axis."
+                )
+            raise ValueError(f"Set a valid minimum and maximum for {label}.")
+        extrapolative = low < fitted_low - 1e-12 or high > fitted_high + 1e-12
+        return low, high, extrapolative
 
     @classmethod
     def response_map(
@@ -628,6 +1000,9 @@ class DigitalTwinService:
         x_field: str,
         y_field: str,
         resolution: int = 45,
+        x_range: tuple[float, float] | None = None,
+        y_range: tuple[float, float] | None = None,
+        balance_field: str | None = None,
     ) -> pd.DataFrame:
         cls._validate_artifact(artifact)
         metadata = artifact["metadata"]
@@ -641,13 +1016,10 @@ class DigitalTwinService:
         if x_field not in numeric_ranges or y_field not in numeric_ranges:
             raise ValueError("Response maps require numeric predictors with fitted ranges.")
         if x_field not in candidates or y_field not in candidates:
-            raise ValueError(
-                "The selected variables do not span a usable two-dimensional range. "
-                "Choose predictors that vary in the fitted data, or use a one-dimensional response curve."
-            )
+            raise ValueError("Both response-map axes must be numeric predictors of the active twin.")
         resolution = int(np.clip(resolution, 15, 100))
-        x_low, x_high = map(float, numeric_ranges[x_field])
-        y_low, y_high = map(float, numeric_ranges[y_field])
+        x_low, x_high, x_extrapolative = cls._resolve_axis_range(artifact, x_field, x_range)
+        y_low, y_high, y_extrapolative = cls._resolve_axis_range(artifact, y_field, y_range)
         x_values = np.linspace(x_low, x_high, resolution, dtype=float)
         y_values = np.linspace(y_low, y_high, resolution, dtype=float)
         grid_x, grid_y = np.meshgrid(x_values, y_values, indexing="xy")
@@ -660,16 +1032,41 @@ class DigitalTwinService:
                 row[y_field] = float(grid_y[row_index, column_index])
                 rows.append(row)
         frame = pd.DataFrame(rows, columns=predictors)
-        predictions = cls.predict_dataframe(artifact, frame)
+        frame, composition_valid, composition = cls._apply_binder_closure(
+            artifact, frame, x_field, y_field, balance_field
+        )
+        predictions = cls._predict_with_composition_mask(artifact, frame, composition_valid)
+        predictions["binder_closure_mode"] = composition["mode"]
+        predictions["binder_closure_rule"] = composition["rule"]
+        predictions["derived_binder"] = composition.get("derived_binder") or ""
+        predictions["balance_binder"] = composition.get("balance_binder") or ""
+        predictions["fixed_binder"] = composition.get("fixed_binder") or ""
+        # Preserve the complete binder composition at every grid point for export/provenance.
+        for field in reversed(BINDER_PERCENT_COLUMNS):
+            if field in frame.columns and field not in {x_field, y_field}:
+                predictions.insert(0, field, pd.to_numeric(frame[field], errors="coerce").to_numpy())
         predictions.insert(0, "grid_column", np.tile(np.arange(resolution), resolution))
         predictions.insert(0, "grid_row", np.repeat(np.arange(resolution), resolution))
         predictions.insert(0, y_field, grid_y.ravel(order="C"))
         predictions.insert(0, x_field, grid_x.ravel(order="C"))
+        predictions = predictions.reset_index(drop=True)
         predictions.attrs["grid_shape"] = (resolution, resolution)
         predictions.attrs["x_field"] = x_field
         predictions.attrs["y_field"] = y_field
+        predictions.attrs["x_range"] = (x_low, x_high)
+        predictions.attrs["y_range"] = (y_low, y_high)
+        predictions.attrs["x_range_extrapolative"] = bool(x_extrapolative)
+        predictions.attrs["y_range_extrapolative"] = bool(y_extrapolative)
         predictions.attrs["figure_color_scales"] = dict(metadata.get("figure_color_scales", {}))
         predictions.attrs["response_training_range"] = list(metadata.get("response_training_range", []))
+        predictions.attrs["binder_closure_enabled"] = bool(composition["enabled"])
+        predictions.attrs["binder_closure_mode"] = composition["mode"]
+        predictions.attrs["binder_closure_rule"] = composition["rule"]
+        predictions.attrs["derived_binder"] = composition.get("derived_binder")
+        predictions.attrs["balance_binder"] = composition.get("balance_binder")
+        predictions.attrs["fixed_binder"] = composition.get("fixed_binder")
+        predictions.attrs["valid_composition_points"] = int(np.sum(composition_valid))
+        predictions.attrs["invalid_composition_points"] = int(np.sum(~composition_valid))
         return predictions
 
     @classmethod
@@ -678,13 +1075,15 @@ class DigitalTwinService:
         artifact: dict[str, Any],
         field: str,
         resolution: int = 100,
+        value_range: tuple[float, float] | None = None,
+        balance_field: str | None = None,
     ) -> pd.DataFrame:
         cls._validate_artifact(artifact)
         metadata = artifact["metadata"]
         if field not in cls.map_axis_candidates(artifact):
-            raise ValueError("The selected predictor does not have a usable fitted range.")
+            raise ValueError("The selected predictor is not a numeric predictor of the active twin.")
         resolution = int(np.clip(resolution, 15, 200))
-        low, high = map(float, metadata["numeric_training_ranges"][field])
+        low, high, extrapolative = cls._resolve_axis_range(artifact, field, value_range)
         values = np.linspace(low, high, resolution, dtype=float)
         defaults = metadata.get("input_defaults", {})
         predictors = list(metadata["predictors"])
@@ -692,10 +1091,33 @@ class DigitalTwinService:
             {**{column: defaults.get(column) for column in predictors}, field: float(value)}
             for value in values
         ], columns=predictors)
-        predictions = cls.predict_dataframe(artifact, frame)
+        frame, composition_valid, composition = cls._apply_binder_closure(
+            artifact, frame, field, None, balance_field
+        )
+        predictions = cls._predict_with_composition_mask(artifact, frame, composition_valid)
+        predictions["binder_closure_mode"] = composition["mode"]
+        predictions["binder_closure_rule"] = composition["rule"]
+        predictions["derived_binder"] = composition.get("derived_binder") or ""
+        predictions["balance_binder"] = composition.get("balance_binder") or ""
+        predictions["fixed_binder"] = composition.get("fixed_binder") or ""
+        for binder in reversed(BINDER_PERCENT_COLUMNS):
+            if binder in frame.columns and binder != field:
+                predictions.insert(0, binder, pd.to_numeric(frame[binder], errors="coerce").to_numpy())
         predictions.insert(0, field, values)
+        predictions = predictions.reset_index(drop=True)
         predictions.attrs["curve_field"] = field
+        predictions.attrs["curve_range"] = (low, high)
+        predictions.attrs["curve_range_extrapolative"] = bool(extrapolative)
+        predictions.attrs["binder_closure_enabled"] = bool(composition["enabled"])
+        predictions.attrs["binder_closure_mode"] = composition["mode"]
+        predictions.attrs["binder_closure_rule"] = composition["rule"]
+        predictions.attrs["derived_binder"] = composition.get("derived_binder")
+        predictions.attrs["balance_binder"] = composition.get("balance_binder")
+        predictions.attrs["fixed_binder"] = composition.get("fixed_binder")
+        predictions.attrs["valid_composition_points"] = int(np.sum(composition_valid))
+        predictions.attrs["invalid_composition_points"] = int(np.sum(~composition_valid))
         return predictions
+
     @staticmethod
     def _single_figure(title: str) -> tuple[Figure, Any]:
         figure = Figure(figsize=(6.0, 6.0), constrained_layout=True)
@@ -903,6 +1325,11 @@ class DigitalTwinService:
                 if getattr(axis, "_colorbar", None) is None:
                     axis.set_xlabel(COLUMN_LABELS.get(x_field, x_field))
                     axis.set_ylabel(COLUMN_LABELS.get(y_field, y_field))
+            if int(surface.attrs.get("invalid_composition_points", 0) or 0):
+                figure.text(
+                    0.02, 0.01, "Blank region = invalid FA + GGBS + SF composition",
+                    fontsize=8, alpha=0.8,
+                )
             apply_chart_style(figure)
         return figures
 
@@ -970,6 +1397,11 @@ class DigitalTwinService:
         for axis in (mean_axis, uncertainty_axis, reliability_axis):
             axis.set_xlabel(COLUMN_LABELS.get(x_field, x_field))
             axis.set_ylabel(COLUMN_LABELS.get(y_field, y_field))
+        if int(surface.attrs.get("invalid_composition_points", 0) or 0):
+            figure.text(
+                0.02, 0.01, "Blank region = invalid FA + GGBS + SF composition",
+                fontsize=8, alpha=0.8,
+            )
         apply_chart_style(figure)
         return figure
 

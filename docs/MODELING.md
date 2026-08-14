@@ -2,6 +2,12 @@
 
 Predictive Modelling is the **authoritative model-benchmarking stage** in GPC-DTwin. The same validated ranking is handed to the Digital Twin workspace for the matching dataset, response, predictor set, review-record policy, and grouping configuration.
 
+### FA, GGBS, and SF are first-class binder predictors
+
+Fly ash, GGBS, and silica fume are handled as one three-variable binder-composition group throughout the software. The bundled reference experiment happens to use **SF = 10%** for all of its mixes; this value is still passed into model fitting, stored in model metadata, shown in prediction scenarios, and retained in the feature-influence table/chart. A future imported dataset containing several SF levels requires no schema or model-code change: the same `SF (%)` field is learned and used exactly like FA and GGBS.
+
+For the current reference data, permutation influence for SF may be zero because its observed value does not vary. This is an output of the active dataset, not a hard-coded rule or a disabled parameter.
+
 ## Candidate algorithms
 
 GPC-DTwin compares seven regression algorithms from one shared model registry:

@@ -11,7 +11,9 @@ import pandas as pd
 from matplotlib.colors import BoundaryNorm
 from matplotlib.figure import Figure
 
-from gpc_dtwin.columns import COLUMN_LABELS, quantity_label
+from gpc_dtwin.columns import (
+    BINDER_PERCENT_COLUMNS, COLUMN_LABELS, MODEL_NUMERIC_PREDICTORS, quantity_label,
+)
 from gpc_dtwin.services.digital_twin_service import DigitalTwinService
 from gpc_dtwin.services.physics_spatial_service import (
     PhysicsSpatialService,
@@ -84,6 +86,9 @@ class Visualization3DService:
         y_field: str,
         resolution: int = 35,
         mode: str = "Estimated response",
+        x_range: tuple[float, float] | None = None,
+        y_range: tuple[float, float] | None = None,
+        balance_field: str | None = None,
     ) -> Surface3DResult:
         if mode not in SURFACE_MODES:
             raise ValueError(f"Unsupported surface mode: {mode}")
@@ -94,13 +99,14 @@ class Visualization3DService:
             raise ValueError("Select different X and Y axes.")
         candidates = self.twin_service.map_axis_candidates(artifact)
         if x_field not in candidates or y_field not in candidates:
-            raise ValueError("Both 3D axes must be varying numeric predictors of the active Digital Twin.")
+            raise ValueError("Both 3D axes must be numeric predictors of the active Digital Twin.")
         response = str(artifact["metadata"]["response"])
         surface = self.twin_service.response_map(
-            artifact, x_field=x_field, y_field=y_field, resolution=resolution
+            artifact, x_field=x_field, y_field=y_field, resolution=resolution,
+            x_range=x_range, y_range=y_range, balance_field=balance_field,
         )
         overlay = self._build_overlay(
-            artifact, dataframe, response, x_field, y_field, mode
+            artifact, dataframe, response, x_field, y_field, mode, balance_field
         )
         return Surface3DResult(
             artifact=artifact,
@@ -121,6 +127,7 @@ class Visualization3DService:
         x_field: str,
         y_field: str,
         mode: str,
+        balance_field: str | None = None,
     ) -> pd.DataFrame:
         if not all(column in dataframe.columns for column in (x_field, y_field)):
             return pd.DataFrame()
@@ -130,6 +137,61 @@ class Visualization3DService:
         frame = frame.dropna(subset=[x_field, y_field])
         if frame.empty:
             return pd.DataFrame()
+
+        # A response surface is a cross-section through the active twin: all
+        # predictors other than the plotted axes (and a closure-balancing
+        # binder) are held at fitted defaults. Overlay only observations that
+        # belong to that same cross-section. Plotting every response record can
+        # place 7-day, 28-day, oven-cured, or otherwise different conditions on
+        # one surface and falsely make the surface appear inconsistent.
+        metadata = artifact["metadata"]
+        predictors = list(metadata.get("predictors", []))
+        defaults = metadata.get("input_defaults", {}) or {}
+        numeric_ranges = metadata.get("numeric_training_ranges", {}) or {}
+        try:
+            plan = self.twin_service.composition_plan(
+                artifact, x_field, y_field, balance_field
+            )
+        except ValueError:
+            plan = {"enabled": False, "mode": "defaults"}
+
+        free_fields = {x_field, y_field}
+        if plan.get("enabled"):
+            if plan.get("mode") == "two_binder_axes":
+                free_fields.update(BINDER_PERCENT_COLUMNS)
+            elif plan.get("mode") == "one_binder_axis":
+                free_fields.update(plan.get("axis_binders", []))
+                if plan.get("balance_binder"):
+                    free_fields.add(str(plan["balance_binder"]))
+
+        match = pd.Series(True, index=frame.index)
+        for predictor in predictors:
+            if predictor in free_fields or predictor not in frame.columns:
+                continue
+            default = defaults.get(predictor)
+            if default is None:
+                continue
+            if predictor in MODEL_NUMERIC_PREDICTORS:
+                values = pd.to_numeric(frame[predictor], errors="coerce")
+                try:
+                    target = float(default)
+                except (TypeError, ValueError):
+                    continue
+                limits = numeric_ranges.get(predictor, [target, target])
+                try:
+                    span = abs(float(limits[1]) - float(limits[0]))
+                except (TypeError, ValueError, IndexError):
+                    span = 0.0
+                atol = max(span * 1e-6, 1e-9)
+                match &= values.notna() & np.isclose(
+                    values.to_numpy(dtype=float), target, atol=atol, rtol=1e-9
+                )
+            else:
+                match &= frame[predictor].astype("string").eq(str(default)).fillna(False)
+        frame = frame.loc[match].copy()
+        if frame.empty:
+            return pd.DataFrame()
+
         overlay = pd.DataFrame({
             x_field: frame[x_field].to_numpy(dtype=float),
             y_field: frame[y_field].to_numpy(dtype=float),
@@ -177,14 +239,23 @@ class Visualization3DService:
         mean = pd.to_numeric(surface["predicted_mean"], errors="coerce")
         uncertainty = pd.to_numeric(surface["normalized_uncertainty_percent"], errors="coerce")
         reliability = surface["reliability_class"].astype("string")
-        supported = reliability.isin(["A", "B"]).mean() * 100.0
+        if "composition_valid" in surface.columns:
+            valid = surface["composition_valid"].fillna(False).astype(bool)
+        else:
+            valid = pd.Series(True, index=surface.index)
+        valid_count = int(valid.sum())
+        total_count = int(len(surface))
+        supported = (reliability[valid].isin(["A", "B"]).mean() * 100.0) if valid_count else 0.0
         return {
-            "minimum_estimate": float(mean.min()),
-            "maximum_estimate": float(mean.max()),
-            "mean_estimate": float(mean.mean()),
-            "mean_uncertainty_percent": float(uncertainty.mean()),
+            "minimum_estimate": float(mean[valid].min()),
+            "maximum_estimate": float(mean[valid].max()),
+            "mean_estimate": float(mean[valid].mean()),
+            "mean_uncertainty_percent": float(uncertainty[valid].mean()),
             "supported_area_percent": float(supported),
-            "map_nodes": float(len(surface)),
+            "map_nodes": float(valid_count),
+            "valid_map_nodes": float(valid_count),
+            "total_map_nodes": float(total_count),
+            "invalid_composition_points": float(total_count - valid_count),
         }
 
     def surface_figure(
@@ -283,6 +354,13 @@ class Visualization3DService:
         axis.set_title(f"{result.mode} · {response_label}", pad=18)
         axis.view_init(elev=float(elevation), azim=float(azimuth))
         axis.grid(True, alpha=0.25)
+        invalid_points = int(surface.attrs.get("invalid_composition_points", 0) or 0)
+        if invalid_points:
+            axis.text2D(
+                0.02, 0.02,
+                "Blank region = invalid FA + GGBS + SF composition",
+                transform=axis.transAxes, fontsize=8, alpha=0.8,
+            )
         return figure
 
     # --- Physics-informed specimen interface -------------------------------------------------

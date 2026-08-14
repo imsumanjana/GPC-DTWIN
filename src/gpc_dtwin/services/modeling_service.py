@@ -22,7 +22,9 @@ from sklearn.pipeline import Pipeline
 
 from gpc_dtwin import __version__
 from gpc_dtwin.chart_style import apply_chart_style
-from gpc_dtwin.columns import COLUMN_LABELS, MODEL_NUMERIC_PREDICTORS, quantity_label
+from gpc_dtwin.columns import (
+    BINDER_PERCENT_COLUMNS, COLUMN_LABELS, MODEL_NUMERIC_PREDICTORS, quantity_label,
+)
 from gpc_dtwin.services.model_registry import (
     MODEL_FACTORIES, algorithm_names, build_pipeline, build_preprocessor,
 )
@@ -443,6 +445,19 @@ class ModelingService:
             "input_defaults": defaults,
             "input_categories": categories,
             "numeric_training_ranges": numeric_ranges,
+            "binder_percent_predictors": [
+                column for column in BINDER_PERCENT_COLUMNS if column in predictors
+            ],
+            "binder_percent_defaults": {
+                column: defaults.get(column)
+                for column in BINDER_PERCENT_COLUMNS
+                if column in predictors
+            },
+            "binder_percent_training_ranges": {
+                column: numeric_ranges.get(column)
+                for column in BINDER_PERCENT_COLUMNS
+                if column in predictors and column in numeric_ranges
+            },
             "data_fingerprint_sha256": fingerprint,
             "observations": len(working),
             "excluded_records": excluded_records,

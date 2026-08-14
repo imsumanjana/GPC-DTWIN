@@ -1,4 +1,4 @@
-# GPC-DTwin v1.2.2
+# GPC-DTwin v1.2.6
 
 GPC-DTwin is a release-ready desktop platform for structured geopolymer-concrete data management,
 quality checking, visual analytics, statistical analysis, predictive modelling, uncertainty-aware
@@ -35,6 +35,10 @@ remains, preserving orientation without drawing a line across the workspace.
 Every response-driven workflow evaluates selected parameters against rows where the chosen response is available. Parameters with no usable overlapping values are excluded automatically, the analysis continues with valid inputs, and a warning lists every excluded field. This policy applies to statistical regression, predictive models, digital twins, 3D response surfaces, durability estimators, optimization surrogates, and active-learning surrogates. Requested, used, and omitted fields are retained in result metadata where applicable.
 
 Regression also deduplicates grouping fields before grouped cross-validation, preventing duplicate two-dimensional group arrays and the former `object too deep for desired array` failure.
+
+## First-class FA–GGBS–SF binder composition
+
+FA (%), GGBS (%), and SF (%) are one shared binder-composition group across analytics, Predictive Models, Digital Twin, 3D Explorer, Optimization, and Active Learning. The bundled reference study uses SF = 10% for every mix, but SF is still retained as a normal predictor and visible scenario input. Future datasets containing multiple SF levels automatically use those values in model fitting and expose SF as a response-map/3D sweep axis without any code or schema change. In Digital Twin and 3D response-space exploration, the three binder percentages are compositionally coupled. A binder/non-binder pair uses an explicit Balance binder. A two-binder 2D surface is enabled only when the fitted data contain two independent binder-composition directions; otherwise it is blocked because such a surface would be dominated by extrapolation. When supported, the third binder is derived from `FA + GGBS + SF = 100%` and impossible compositions are masked rather than predicted.
 
 ## Selectable figure quality
 
@@ -97,10 +101,14 @@ selectable with their current rank and one-word validation status. It adds an al
 out-of-fold residual uncertainty interval, nearest-training distance, fitted-range checks, and A/B/C/D
 reliability. Dataset or verification-state changes invalidate stale shared model state.
 
-The 3D Response Surface consumes the active twin directly and never fits a separate surrogate. The
-second 3D view is now **Physics-Informed Specimen**: the former sinusoidal synthetic cube is removed
-and replaced by explicit compression, splitting-tensile, flexural-bending, and acid-diffusion fields with
-field-source and capacity-source provenance.
+The 3D Response Surface consumes the active twin directly and never fits a separate surrogate. Every
+numeric active-twin predictor is exposed as a response-space axis, including SF when the present fitted
+range is 10–10%. Axis limits initialize from the fitted data; flat ranges require an explicit user-defined
+exploration span. Binder axes enforce FA + GGBS + SF = 100%, using an automatically derived third
+component or a user-selected Balance binder, and invalid compositions are left blank instead of being
+predicted. Valid extrapolative points retain the Digital Twin reliability/extrapolation flags. The second 3D view is now **Physics-Informed Specimen**: the former sinusoidal synthetic cube is
+removed and replaced by explicit compression, splitting-tensile, flexural-bending, and acid-diffusion
+fields with field-source and capacity-source provenance.
 
 See `docs/MODELING.md`, `docs/DIGITAL_TWIN.md`, and `docs/THREE_D_EXPLORER.md`.
 

@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 )
 
 from gpc_dtwin.columns import (
-    COLUMN_LABELS, MODEL_DEFAULT_PREDICTORS, MODEL_PREDICTOR_COLUMNS,
+    BINDER_PERCENT_COLUMNS, COLUMN_LABELS, MODEL_DEFAULT_PREDICTORS, MODEL_PREDICTOR_COLUMNS,
     MODEL_RESPONSE_COLUMNS,
 )
 from gpc_dtwin.ui.export_preview_dialog import open_figure_export_dialog
@@ -553,12 +553,21 @@ class ModelingPage(QWidget):
         self.active_artifact = artifact
         metadata = artifact["metadata"]
         metrics = metadata.get("metrics", {})
+        binder_inputs = [
+            COLUMN_LABELS.get(field, field)
+            for field in BINDER_PERCENT_COLUMNS
+            if field in metadata.get("predictors", [])
+        ]
+        binder_text = (
+            " · Binder inputs " + ", ".join(binder_inputs)
+            if binder_inputs else ""
+        )
         self.active_model_label.setText(
             f"{metadata['algorithm']} · {COLUMN_LABELS.get(metadata['response'], metadata['response'])}"
         )
         self.active_model_detail.setText(
             f"{metadata.get('cv_method', '')} · RMSE {metrics.get('rmse', float('nan')):.4f} · "
-            f"{metadata.get('observations', '—')} records"
+            f"{metadata.get('observations', '—')} records{binder_text}"
         )
         self._configure_prediction_inputs(artifact)
         self._update_workflow_tabs()

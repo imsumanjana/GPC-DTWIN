@@ -8,7 +8,7 @@ from gpc_dtwin.paths import REFERENCE_DATASET
 
 
 def test_release_version_and_local_health(tmp_path, monkeypatch):
-    assert __version__ == "1.2.2"
+    assert __version__ == "1.2.6"
     items = run_health_check(tmp_path / "health.sqlite3")
     assert all(item.passed for item in items), items
 

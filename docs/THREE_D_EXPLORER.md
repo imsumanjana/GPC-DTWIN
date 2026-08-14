@@ -5,9 +5,11 @@ The 3D Explorer now has two deliberately different scientific roles:
 1. **Response Surface** — visualization of the active Digital Twin in predictor/design space;
 2. **Physics-Informed Specimen** — theory-based visualization in physical specimen coordinates.
 
+FA, GGBS, and SF are carried together as the active binder composition. The bundled reference data use 10% SF for every mix, and `SF (%)` remains visible in the current 3D response-surface axis selectors exactly like FA and GGBS. Its fitted range initializes as 10–10%; the user may enter an explicit exploration span for a what-if surface, with out-of-domain reliability flags preserved. Future datasets with multiple SF levels automatically supply their measured fitted range.
+
 ## Response Surface
 
-The Response Surface does **not train a new surrogate**. It requires an active Digital Twin and evaluates that exact artifact over two selected numeric axes. The header reports the active twin response, selected algorithm, prediction rank/status, and confidence level.
+The Response Surface does **not train a new surrogate**. It requires an active Digital Twin and evaluates that exact artifact over two selected numeric axes. All finite numeric twin predictors are selectable, including currently flat fitted parameters. Editable X/Y minimum and maximum controls start from the fitted limits; a flat range must be deliberately expanded by the user before the surface is built. The header reports the active twin response, selected algorithm, prediction rank/status, confidence level, and FA–GGBS–SF binder defaults.
 
 Available surface modes are:
 
@@ -16,7 +18,7 @@ Available surface modes are:
 - Prediction interval width
 - Reliability landscape
 
-The grid can include observation overlays, a surface mesh, and a contour projection. Camera presets and manual elevation/azimuth controls are provided. Grid data can be exported as CSV and figures can be exported using the common high-resolution figure engine.
+The grid can include observation overlays, a surface mesh, and a contour projection. Observation overlays are filtered to the same cross-section as the surface: predictors not used as axes are matched to the fitted defaults, so measurements from different ages or curing regimes are not mixed onto the same response slice. Camera presets and manual elevation/azimuth controls are provided. Grid data can be exported as CSV and figures can be exported using the common high-resolution figure engine.
 
 ### Reliability interpretation
 
@@ -99,3 +101,7 @@ No internal CT, voxel, crack, or spatial NDT measurement is claimed unless such 
 The 3D Response Surface reads fixed colour limits from the active Digital Twin. Estimated response, relative uncertainty, and interval-width colours therefore retain the same numerical meaning when the X/Y axes are changed.
 
 Physics-Informed Specimen fields no longer normalize each mix independently. Stress/capacity fields use a scale derived from all compatible mixes in the active dataset; utilisation, damage, penetration, and retention fields use fixed physical bounds. The selected colour limits and their basis are also written into exported specimen-field CSV data.
+
+## Composition-aware response surfaces
+
+The 3D response grid uses the same closure rules as Digital Twin Response Maps. A binder axis paired with a non-binder variable exposes a **Balance binder** control; the selected balance component changes while the remaining binder is held at its fitted default. Two binder axes are enabled only when the fitted FA–GGBS–SF data contain two independent composition directions. With the bundled reference data, SF is 10% and FA/GGBS supply only one independent binder direction, so a two-binder surface is deliberately blocked instead of displaying a mostly extrapolative triangular simplex. Future datasets with independent SF variation automatically enable the two-binder surface, where the third component is derived by `FA + GGBS + SF = 100%` and invalid compositions are masked. The Grid nodes metric remains `valid/total` for any clipped valid simplex.

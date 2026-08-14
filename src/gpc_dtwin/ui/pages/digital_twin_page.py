@@ -8,12 +8,12 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame,
     QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
-    QSpinBox, QSplitter, QStyle, QTableView, QTableWidget, QTableWidgetItem, QTabWidget,
+    QDoubleSpinBox, QSpinBox, QSplitter, QStyle, QTableView, QTableWidget, QTableWidgetItem, QTabWidget,
     QVBoxLayout, QWidget,
 )
 
 from gpc_dtwin.columns import (
-    COLUMN_LABELS, MODEL_DEFAULT_PREDICTORS, MODEL_NUMERIC_PREDICTORS,
+    BINDER_PERCENT_COLUMNS, COLUMN_LABELS, MODEL_DEFAULT_PREDICTORS, MODEL_NUMERIC_PREDICTORS,
     MODEL_PREDICTOR_COLUMNS, MODEL_RESPONSE_COLUMNS,
 )
 from gpc_dtwin.ui.export_preview_dialog import open_figure_export_dialog
@@ -272,8 +272,12 @@ class DigitalTwinPage(QWidget):
         self.map_y_combo = QComboBox()
         self.map_x_combo.currentIndexChanged.connect(self._keep_map_axes_distinct)
         self.map_y_combo.currentIndexChanged.connect(self._keep_map_axes_distinct)
+        self.map_x_combo.currentIndexChanged.connect(self._update_map_axis_ranges)
+        self.map_y_combo.currentIndexChanged.connect(self._update_map_axis_ranges)
         self.map_x_combo.currentIndexChanged.connect(self._invalidate_map_view)
         self.map_y_combo.currentIndexChanged.connect(self._invalidate_map_view)
+        self.map_x_combo.currentIndexChanged.connect(self._update_map_composition_controls)
+        self.map_y_combo.currentIndexChanged.connect(self._update_map_composition_controls)
         self.map_resolution = QSpinBox()
         self.map_resolution.setRange(15, 100)
         self.map_resolution.setValue(45)
@@ -284,19 +288,50 @@ class DigitalTwinPage(QWidget):
         toolbar.addWidget(self.map_y_combo)
         toolbar.addWidget(QLabel("Resolution"))
         toolbar.addWidget(self.map_resolution)
-        generate = QPushButton("Generate response map")
-        generate.setObjectName("PrimaryButton")
-        generate.clicked.connect(self.generate_map)
+        self.map_generate_button = QPushButton("Generate response map")
+        self.map_generate_button.setObjectName("PrimaryButton")
+        self.map_generate_button.clicked.connect(self.generate_map)
+        self.map_generate_button.setEnabled(False)
         export_data = QPushButton("Export map data")
         export_data.clicked.connect(self.export_map_data)
         export_figure = QPushButton("Export figure")
         export_figure.clicked.connect(self.export_map_figure)
         toolbar.addStretch()
-        toolbar.addWidget(generate)
+        toolbar.addWidget(self.map_generate_button)
         toolbar.addWidget(export_data)
         toolbar.addWidget(export_figure)
         layout.addWidget(toolbar_card)
 
+        range_card = QFrame()
+        range_card.setObjectName("Card")
+        range_layout = QHBoxLayout(range_card)
+        range_layout.setContentsMargins(18, 10, 18, 10)
+        self.map_x_min = self._map_range_spin(); self.map_x_max = self._map_range_spin()
+        self.map_y_min = self._map_range_spin(); self.map_y_max = self._map_range_spin()
+        for spin in (self.map_x_min, self.map_x_max, self.map_y_min, self.map_y_max):
+            spin.valueChanged.connect(self._invalidate_map_view)
+            spin.valueChanged.connect(self._update_map_build_state)
+        self.map_balance_combo = QComboBox()
+        self.map_balance_combo.currentIndexChanged.connect(self._update_map_composition_controls)
+        self.map_balance_combo.currentIndexChanged.connect(self._invalidate_map_view)
+        range_layout.addWidget(QLabel("X min")); range_layout.addWidget(self.map_x_min)
+        range_layout.addWidget(QLabel("X max")); range_layout.addWidget(self.map_x_max)
+        range_layout.addSpacing(12)
+        range_layout.addWidget(QLabel("Y min")); range_layout.addWidget(self.map_y_min)
+        range_layout.addWidget(QLabel("Y max")); range_layout.addWidget(self.map_y_max)
+        range_layout.addSpacing(12)
+        range_layout.addWidget(QLabel("Balance binder")); range_layout.addWidget(self.map_balance_combo)
+        range_layout.addStretch()
+        layout.addWidget(range_card)
+
+        self.map_closure_note = QLabel("Binder composition held at fitted defaults.")
+        self.map_closure_note.setObjectName("Muted")
+        self.map_closure_note.setWordWrap(True)
+        layout.addWidget(self.map_closure_note)
+        self.map_range_warning = QLabel("")
+        self.map_range_warning.setObjectName("Muted")
+        self.map_range_warning.setWordWrap(True)
+        layout.addWidget(self.map_range_warning)
         self.map_note = QLabel("Select an active twin with at least two numeric predictors.")
         self.map_note.setObjectName("Muted")
         self.map_note.setWordWrap(True)
@@ -638,7 +673,7 @@ class DigitalTwinPage(QWidget):
         self.active_twin_detail.setText(
             f"{rank_text}{status} · {metadata.get('confidence_percent', 95):.0f}% interval · "
             f"RMSE {metrics.get('rmse', float('nan')):.4f} · "
-            f"{metadata.get('observations', '—')} records"
+            f"{metadata.get('observations', '—')} records · {self._binder_summary(metadata)}"
         )
         self._configure_scenario_inputs(artifact)
         self._configure_map_axes(artifact)
@@ -659,6 +694,131 @@ class DigitalTwinPage(QWidget):
             self.scenario_table.setItem(0, index, item)
         self.scenario_table.resizeColumnsToContents()
 
+    @staticmethod
+    def _map_range_spin() -> QDoubleSpinBox:
+        spin = QDoubleSpinBox()
+        spin.setRange(-1_000_000.0, 1_000_000.0)
+        spin.setDecimals(4)
+        spin.setSingleStep(1.0)
+        return spin
+
+    def _update_map_axis_ranges(self, *_args) -> None:
+        artifact = self.active_artifact
+        if artifact is None or not hasattr(self, "map_x_min"):
+            return
+        pairs = [
+            (self.map_x_combo, self.map_x_min, self.map_x_max),
+            (self.map_y_combo, self.map_y_min, self.map_y_max),
+        ]
+        sender = self.sender()
+        if sender is self.map_x_combo:
+            pairs = pairs[:1]
+        elif sender is self.map_y_combo:
+            pairs = pairs[1:]
+        for combo, low_spin, high_spin in pairs:
+            field = combo.currentData()
+            if not field:
+                continue
+            try:
+                low, high = self.service.fitted_axis_range(artifact, str(field))
+            except (ValueError, TypeError):
+                continue
+            low_spin.blockSignals(True); high_spin.blockSignals(True)
+            low_spin.setValue(float(low)); high_spin.setValue(float(high))
+            low_spin.blockSignals(False); high_spin.blockSignals(False)
+        self._update_map_composition_controls()
+        self._update_map_build_state()
+
+    def _update_map_composition_controls(self, *_args) -> None:
+        artifact = self.active_artifact
+        if artifact is None or not hasattr(self, "map_balance_combo"):
+            return
+        x_field = self.map_x_combo.currentData()
+        y_field = self.map_y_combo.currentData() if self.map_mode == "2d" else None
+        if not x_field:
+            self.map_balance_combo.setEnabled(False)
+            self.map_closure_note.setText("Binder composition held at fitted defaults.")
+            self._update_map_build_state()
+            return
+        current = self.map_balance_combo.currentData()
+        candidates = self.service.balance_binder_candidates(
+            artifact, str(x_field), str(y_field) if y_field else None
+        )
+        self.map_balance_combo.blockSignals(True)
+        self.map_balance_combo.clear()
+        for field in candidates:
+            self.map_balance_combo.addItem(COLUMN_LABELS.get(field, field), field)
+        if candidates:
+            preferred = current if current in candidates else self.service.default_balance_binder(
+                artifact, str(x_field), str(y_field) if y_field else None
+            )
+            index = self.map_balance_combo.findData(preferred)
+            self.map_balance_combo.setCurrentIndex(index if index >= 0 else 0)
+            self.map_balance_combo.setEnabled(True)
+        else:
+            self.map_balance_combo.setEnabled(False)
+        self.map_balance_combo.blockSignals(False)
+        try:
+            plan = self.service.composition_plan(
+                artifact, str(x_field), str(y_field) if y_field else None,
+                self.map_balance_combo.currentData(),
+            )
+            prefix = "Binder closure: " if plan.get("enabled") else ""
+            self.map_closure_note.setText(prefix + str(plan.get("rule", "")))
+        except ValueError as error:
+            self.map_closure_note.setText("Binder closure unavailable: " + str(error))
+        self._update_map_build_state()
+
+    def _update_map_build_state(self, *_args) -> None:
+        if not hasattr(self, "map_generate_button"):
+            return
+        artifact = self.active_artifact
+        x_field = self.map_x_combo.currentData() if hasattr(self, "map_x_combo") else None
+        y_field = self.map_y_combo.currentData() if self.map_mode == "2d" else None
+        if self.map_mode == "2d":
+            ranges_ok = (
+                self.map_x_max.value() > self.map_x_min.value()
+                and self.map_y_max.value() > self.map_y_min.value()
+            )
+            axes_ok = bool(artifact is not None and x_field and y_field and x_field != y_field)
+        elif self.map_mode == "1d":
+            ranges_ok = self.map_x_max.value() > self.map_x_min.value()
+            axes_ok = bool(artifact is not None and x_field)
+        else:
+            ranges_ok = False
+            axes_ok = False
+        composition_ok = True
+        composition_error = ""
+        if axes_ok:
+            try:
+                self.service.composition_plan(
+                    artifact, str(x_field), str(y_field) if y_field else None,
+                    self.map_balance_combo.currentData(),
+                )
+            except ValueError as error:
+                composition_ok = False
+                composition_error = str(error)
+        self.map_generate_button.setEnabled(bool(axes_ok and ranges_ok and composition_ok))
+        warnings: list[str] = []
+        if composition_error:
+            warnings.append(composition_error)
+        if axes_ok and not ranges_ok:
+            checks = [(
+                COLUMN_LABELS.get(str(x_field), str(x_field)),
+                self.map_x_min.value(), self.map_x_max.value(),
+            )]
+            if self.map_mode == "2d" and y_field:
+                checks.append((
+                    COLUMN_LABELS.get(str(y_field), str(y_field)),
+                    self.map_y_min.value(), self.map_y_max.value(),
+                ))
+            for label, low, high in checks:
+                if high <= low:
+                    warnings.append(
+                        f"{label} has no exploration span. Enter a minimum smaller than the maximum."
+                    )
+        self.map_range_warning.setText(("Warning: " + " ".join(warnings)) if warnings else "")
+
     def _configure_map_axes(self, artifact: dict) -> None:
         self.map_data = pd.DataFrame()
         self.map_figures = {}
@@ -675,20 +835,65 @@ class DigitalTwinPage(QWidget):
         self.map_mode = "2d" if len(values) >= 2 else "1d" if len(values) == 1 else "none"
         self.map_y_combo.setEnabled(self.map_mode == "2d")
         if self.map_mode == "2d":
-            self.map_y_combo.setCurrentIndex(1)
+            preferred_x, preferred_y = self.service.preferred_response_axes(artifact)
+            x_index = self.map_x_combo.findData(preferred_x)
+            y_index = self.map_y_combo.findData(preferred_y)
+            if x_index >= 0:
+                self.map_x_combo.setCurrentIndex(x_index)
+            if y_index >= 0:
+                self.map_y_combo.setCurrentIndex(y_index)
+            elif self.map_y_combo.currentData() == self.map_x_combo.currentData():
+                self.map_y_combo.setCurrentIndex(1 if self.map_x_combo.currentIndex() != 1 else 0)
             self.map_note.setText(
-                "Response maps keep all unselected predictors at fitted default values."
+                "Response maps expose every numeric twin predictor, including SF. Axis limits start at fitted ranges; "
+                "edit a flat range (for example SF 10–10%) to explore beyond the fitted data. "
+                "Extrapolative points are retained but downgraded by the reliability calculation. "
+                "When a binder component is used as an axis, FA + GGBS + SF = 100% is enforced. "
+                + self._binder_summary(artifact["metadata"], include_ranges=True)
             )
         elif self.map_mode == "1d":
             self.map_note.setText(
-                "Only one predictor varies across the fitted data. A one-dimensional response curve will be generated."
+                "A one-dimensional response curve will be generated. Edit the range if the fitted predictor range is flat. "
+                + self._binder_summary(artifact["metadata"], include_ranges=True)
             )
         else:
             self.map_note.setText(
-                "The active twin has no numeric predictor with a usable fitted range."
+                "The active twin has no numeric predictor available for a response view. "
+                + self._binder_summary(artifact["metadata"], include_ranges=True)
             )
         self.map_x_combo.blockSignals(False)
         self.map_y_combo.blockSignals(False)
+        self._update_map_axis_ranges()
+        self._update_map_composition_controls()
+        self._update_map_build_state()
+
+    @staticmethod
+    def _binder_summary(metadata: dict, *, include_ranges: bool = False) -> str:
+        """Describe FA, GGBS, and SF consistently from the active model/twin metadata."""
+        defaults = metadata.get("input_defaults", {})
+        ranges = metadata.get("numeric_training_ranges", {})
+        parts: list[str] = []
+        for field in BINDER_PERCENT_COLUMNS:
+            if field not in metadata.get("predictors", []):
+                continue
+            label = COLUMN_LABELS.get(field, field).replace(" (%)", "")
+            value = defaults.get(field)
+            if value is None:
+                text = f"{label} —"
+            else:
+                try:
+                    text = f"{label} {float(value):g}%"
+                except (TypeError, ValueError):
+                    text = f"{label} {value}"
+            if include_ranges:
+                limits = ranges.get(field)
+                if isinstance(limits, (list, tuple)) and len(limits) == 2:
+                    try:
+                        text += f" [{float(limits[0]):g}–{float(limits[1]):g}%]"
+                    except (TypeError, ValueError):
+                        pass
+            parts.append(text)
+        return "Binder: " + " · ".join(parts) if parts else "Binder composition not selected"
 
 
     def _invalidate_map_view(self, *_args) -> None:
@@ -779,7 +984,7 @@ class DigitalTwinPage(QWidget):
         if not x_field or self.map_mode == "none":
             QMessageBox.information(
                 self, "Response view unavailable",
-                "The active twin does not contain a numeric predictor with a usable fitted range."
+                "The active twin does not contain a numeric predictor available for a response view."
             )
             return
         self.setCursor(Qt.CursorShape.WaitCursor)
@@ -788,36 +993,47 @@ class DigitalTwinPage(QWidget):
             response_label = COLUMN_LABELS.get(response, response)
             if self.map_mode == "1d":
                 self.map_data = self.service.response_curve(
-                    self.active_artifact, x_field, self.map_resolution.value()
+                    self.active_artifact, x_field, self.map_resolution.value(),
+                    value_range=(self.map_x_min.value(), self.map_x_max.value()),
+                    balance_field=self.map_balance_combo.currentData(),
                 )
                 figure = self.service.response_curve_figure(
                     self.map_data, x_field, response_label
                 )
                 self.map_figures = {"Response curve": figure}
+                valid_points = int(self.map_data.attrs.get("valid_composition_points", len(self.map_data)))
                 self.map_note.setText(
-                    f"{len(self.map_data)} curve points · unselected predictors held at fitted defaults."
+                    f"{valid_points}/{len(self.map_data)} valid curve points · "
+                    f"{self.map_data.attrs.get('binder_closure_rule', 'unselected predictors held at fitted defaults.')}"
                 )
             else:
                 y_field = self.map_y_combo.currentData()
                 if not y_field or x_field == y_field:
                     QMessageBox.information(
-                        self, "Response map unavailable", "Select two different varying predictors."
+                        self, "Response map unavailable", "Select two different numeric predictors."
                     )
                     return
                 self.map_data = self.service.response_map(
-                    self.active_artifact, x_field, y_field, self.map_resolution.value()
+                    self.active_artifact, x_field, y_field, self.map_resolution.value(),
+                    x_range=(self.map_x_min.value(), self.map_x_max.value()),
+                    y_range=(self.map_y_min.value(), self.map_y_max.value()),
+                    balance_field=self.map_balance_combo.currentData(),
                 )
                 self.map_figures = self.service.response_map_figures(
                     self.map_data, x_field, y_field, response_label
                 )
                 reliability = self.map_data["reliability_class"].value_counts().to_dict()
                 summary = " · ".join(f"{grade}: {reliability.get(grade, 0)}" for grade in "ABCD")
+                valid_points = int(self.map_data.attrs.get("valid_composition_points", len(self.map_data)))
+                invalid_points = int(self.map_data.attrs.get("invalid_composition_points", 0))
                 self.map_note.setText(
-                    f"{len(self.map_data)} grid points · reliability distribution {summary}."
+                    f"{valid_points}/{len(self.map_data)} valid grid points · reliability distribution {summary} · "
+                    f"invalid compositions masked: {invalid_points}. "
+                    f"{self.map_data.attrs.get('binder_closure_rule', '')}"
                 )
             self.map_figure_tabs.set_figures(self.map_figures)
         except ValueError as error:
-            QMessageBox.information(self, "Response view unavailable", str(error))
+            self.map_range_warning.setText("Warning: " + str(error))
         except Exception:
             QMessageBox.warning(
                 self, "Response view unavailable",
