@@ -6,7 +6,14 @@
 #define MyAppCopyright "Copyright © 2026 Dr. Suman Jana. All rights reserved."
 
 [Setup]
-; Never change this AppId in future versions.
+; ============================================================
+; GPC-DTwin Windows Installer
+; Compatible with Inno Setup 5.5 / 5.6
+;
+; IMPORTANT:
+; Never change this AppId in future GPC-DTwin versions.
+; ============================================================
+
 AppId={{D9B89B2F-9B2E-47CF-B55A-45783F3C4F8E}
 
 AppName={#MyAppName}
@@ -18,83 +25,179 @@ AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 
-DefaultDirName={autopf}\GPC-DTwin
-DefaultGroupName=GPC-DTwin
+; ------------------------------------------------------------
+; Installation location
+;
+; In 64-bit install mode {pf} resolves to the native
+; 64-bit Program Files directory.
+; ------------------------------------------------------------
+
+DefaultDirName={pf}\{#MyAppName}
+DefaultGroupName={#MyAppName}
+
 DisableProgramGroupPage=yes
 AllowNoIcons=yes
 
-; 64-bit installer.
-SetupArchitecture=x64
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
+; ------------------------------------------------------------
+; Architecture
+;
+; GPC-DTwin is built by PyInstaller as Windows x64.
+;
+; Use "x64", NOT "x64compatible", because x64compatible
+; belongs to newer Inno Setup versions.
+; ------------------------------------------------------------
+
+ArchitecturesAllowed=x64
+ArchitecturesInstallIn64BitMode=x64
 
 PrivilegesRequired=admin
+
+; Windows 10 or later
 MinVersion=10.0
 
+; ------------------------------------------------------------
+; Installer output
+; ------------------------------------------------------------
+
 OutputDir=..\release
-OutputBaseFilename=GPC-DTwin-v1.2.6-Setup-x64
+OutputBaseFilename={#MyAppName}-v{#MyAppVersion}-Setup-x64
 
-; Installer, uninstaller and Apps & Features icons.
+; ------------------------------------------------------------
+; Installer icon / Apps & Features
+; ------------------------------------------------------------
+
 SetupIconFile=..\resources\GPC-DTwin.ico
-UninstallDisplayIcon={app}\{#MyAppExeName}
-UninstallDisplayName=GPC-DTwin v{#MyAppVersion}
 
-; Modern adaptive installer.
-WizardStyle=modern dynamic polar includetitlebar hidebevels
-WizardResizable=yes
-WizardSizePercent=125,120
+UninstallDisplayIcon={app}\{#MyAppExeName}
+UninstallDisplayName={#MyAppName} v{#MyAppVersion}
+
+; ------------------------------------------------------------
+; IMPORTANT:
+;
+; No WizardStyle directive here.
+; No WizardSizePercent.
+; No DynamicDark.
+; No SetupArchitecture.
+;
+; These require newer versions of Inno Setup.
+; The compiler will use its native/default wizard appearance.
+; ------------------------------------------------------------
+
 DisableWelcomePage=no
 DisableReadyPage=no
 DisableFinishedPage=no
 
-; Use the logo-only PNG in the installer header.
-WizardSmallImageFile=..\resources\GPC-DTwin.png
-WizardSmallImageFileDynamicDark=..\resources\GPC-DTwin.png
+; ------------------------------------------------------------
+; Compression
+; ------------------------------------------------------------
 
 Compression=lzma2/max
 SolidCompression=yes
 
+; ------------------------------------------------------------
+; Upgrade behaviour
+;
+; Restart Manager support exists in Inno Setup 5.5+.
+; ------------------------------------------------------------
+
 CloseApplications=yes
 RestartApplications=no
-UsePreviousAppDir=yes
-SetupLogging=yes
 
-VersionInfoVersion=1.2.6.0
-VersionInfoProductVersion=1.2.6.0
+UsePreviousAppDir=yes
+
+; ------------------------------------------------------------
+; Version metadata
+; ------------------------------------------------------------
+
+VersionInfoVersion={#MyAppVersion}.0
+VersionInfoProductVersion={#MyAppVersion}.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoProductName={#MyAppName}
 VersionInfoDescription=Materials analytics and digital-twin platform
 VersionInfoCopyright={#MyAppCopyright}
 
+
 [Languages]
+
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+
 [Tasks]
+
 Name: "desktopicon"; \
     Description: "Create a desktop shortcut"; \
     GroupDescription: "Additional shortcuts:"; \
     Flags: unchecked
 
+
+[InstallDelete]
+
+; ============================================================
+; Remove the previous PyInstaller runtime during upgrades.
+;
+; GPC-DTwin is a PyInstaller one-folder application.
+; Most Python packages, Qt files, DLLs and scientific libraries
+; are located in _internal.
+;
+; Cleaning this directory prevents obsolete runtime files from
+; older releases remaining after an in-place upgrade.
+; ============================================================
+
+Type: filesandordirs; Name: "{app}\_internal"
+
+
 [Files]
-; Install the complete PyInstaller one-folder package.
+
+; ============================================================
+; Install the COMPLETE PyInstaller one-folder application.
+;
+; Expected structure:
+;
+; dist\
+;   GPC-DTwin\
+;       GPC-DTwin.exe
+;       _internal\
+;       ...
+;
+; Everything in dist\GPC-DTwin is copied recursively.
+; ============================================================
+
 Source: "..\dist\GPC-DTwin\*"; \
     DestDir: "{app}"; \
     Flags: ignoreversion recursesubdirs createallsubdirs
 
+
 [Icons]
-Name: "{autoprograms}\GPC-DTwin"; \
+
+; ------------------------------------------------------------
+; Start Menu shortcut
+; ------------------------------------------------------------
+
+Name: "{group}\{#MyAppName}"; \
     Filename: "{app}\{#MyAppExeName}"; \
     WorkingDir: "{app}"; \
     IconFilename: "{app}\{#MyAppExeName}"
 
-Name: "{autodesktop}\GPC-DTwin"; \
+
+; ------------------------------------------------------------
+; Optional desktop shortcut
+; ------------------------------------------------------------
+
+Name: "{commondesktop}\{#MyAppName}"; \
     Filename: "{app}\{#MyAppExeName}"; \
     WorkingDir: "{app}"; \
     IconFilename: "{app}\{#MyAppExeName}"; \
     Tasks: desktopicon
 
+
 [Run]
+
+; ------------------------------------------------------------
+; Offer to launch GPC-DTwin after installation.
+; Not executed during silent installation.
+; ------------------------------------------------------------
+
 Filename: "{app}\{#MyAppExeName}"; \
-    Description: "Launch GPC-DTwin"; \
+    Description: "Launch {#MyAppName}"; \
     WorkingDir: "{app}"; \
     Flags: nowait postinstall skipifsilent
