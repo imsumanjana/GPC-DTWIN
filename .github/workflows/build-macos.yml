@@ -51,7 +51,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install -r requirements-lock.txt
-          python -m pip install --no-deps .
+          # Editable install is deliberate for pre-freeze validation. It keeps
+          # gpc_dtwin.__file__ rooted in this checkout, so source-mode resource
+          # paths resolve to ./data and ./resources instead of site-packages.
+          python -m pip install --no-deps -e .
           python -m pip check
 
       - name: Verify release dependency stack
@@ -64,8 +67,11 @@ jobs:
           import pandas
           import matplotlib
           import scipy
+          from scipy import linalg, sparse
           import sklearn
+          from sklearn import compose, ensemble, inspection, metrics, pipeline, preprocessing, svm
           import joblib
+          import openpyxl
           import PyInstaller
           from PyQt6.QtCore import PYQT_VERSION_STR, QT_VERSION_STR, qVersion
           from PyQt6 import QtCore, QtGui, QtWidgets
@@ -77,6 +83,7 @@ jobs:
           print("SciPy:", scipy.__version__)
           print("scikit-learn:", sklearn.__version__)
           print("joblib:", joblib.__version__)
+          print("openpyxl:", openpyxl.__version__)
           print("PyInstaller:", PyInstaller.__version__)
           print("PyQt:", PYQT_VERSION_STR)
           print("Compiled Qt:", QT_VERSION_STR)
@@ -89,11 +96,24 @@ jobs:
           PY
           sw_vers
 
-      - name: Run service and application checks
+      - name: Run service and source-tree application checks
         shell: bash
         run: |
           export QT_QPA_PLATFORM=offscreen
           python -m pytest -m "not gui"
+
+          echo "Source-mode resource resolution:"
+          python - <<'PY'
+          from gpc_dtwin.paths import REFERENCE_DATASET, TEMPLATE_DATASET, BUNDLED_ROOT
+          print("Bundled root:", BUNDLED_ROOT)
+          print("Reference dataset:", REFERENCE_DATASET)
+          print("CSV template:", TEMPLATE_DATASET)
+          if not REFERENCE_DATASET.is_file():
+              raise SystemExit(f"Reference dataset not found: {REFERENCE_DATASET}")
+          if not TEMPLATE_DATASET.is_file():
+              raise SystemExit(f"CSV template not found: {TEMPLATE_DATASET}")
+          PY
+
           python -m gpc_dtwin.app --self-check
 
       - name: Create macOS icon
@@ -142,6 +162,7 @@ jobs:
             --collect-all matplotlib \
             --collect-all sklearn \
             --collect-submodules scipy \
+            --collect-all openpyxl \
             "src/gpc_dtwin/app.py"
 
       - name: Validate frozen macOS application
@@ -158,6 +179,13 @@ jobs:
           echo "Largest bundle components:"
           du -sh "$APP"/Contents/* | sort -h
 
+          echo "Frozen executable architecture:"
+          file "$BIN"
+          file "$BIN" | grep -q "arm64"
+
+          # This is the authoritative runtime-packaging check. It executes the
+          # frozen app and imports NumPy, pandas, Matplotlib, SciPy compiled
+          # modules, scikit-learn model modules, joblib, openpyxl and PyQt6.
           export QT_QPA_PLATFORM=offscreen
           "$BIN" --self-check
 
