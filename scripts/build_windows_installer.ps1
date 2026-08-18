@@ -39,18 +39,59 @@ if (-not $ISCC) {
     throw "Inno Setup Compiler was not found. Install Inno Setup 6.3 or newer, then run this script again."
 }
 
-$ProductVersion = (Get-Item $ISCC).VersionInfo.ProductVersion
-$VersionMatch = [regex]::Match($ProductVersion, '\d+\.\d+(?:\.\d+)?')
-if (-not $VersionMatch.Success) {
-    throw "Could not determine Inno Setup version from $ISCC (reported '$ProductVersion')."
+# Some current Inno Setup 7 ISCC.exe builds expose ProductVersion as 0.0.0
+# through Windows file metadata. Treat file metadata as informational only and
+# verify the feature we actually require: support for x64compatible.
+$VersionInfo = (Get-Item $ISCC).VersionInfo
+$InnoVersion = $null
+foreach ($RawVersion in @($VersionInfo.FileVersion, $VersionInfo.ProductVersion)) {
+    if ([string]::IsNullOrWhiteSpace($RawVersion)) { continue }
+    $VersionMatch = [regex]::Match($RawVersion, '\d+\.\d+(?:\.\d+)?(?:\.\d+)?')
+    if (-not $VersionMatch.Success) { continue }
+    try {
+        $CandidateVersion = [version]$VersionMatch.Value
+        if ($CandidateVersion.Major -gt 0) {
+            $InnoVersion = $CandidateVersion
+            break
+        }
+    } catch {
+        # Continue to the capability probe below.
+    }
 }
-$InnoVersion = [version]$VersionMatch.Value
-Write-Host "[GPC-DTwin] Inno Setup: $InnoVersion" -ForegroundColor Cyan
-Write-Host "[GPC-DTwin] Compiler:   $ISCC"
 
-if ($InnoVersion -lt [version]"6.3.0") {
-    throw "Inno Setup $InnoVersion is too old for x64compatible installers. Upgrade to Inno Setup 6.3 or newer. Older compilers restrict the installer to native x64 Windows and can reject Windows 11 ARM64."
+if ($InnoVersion) {
+    Write-Host "[GPC-DTwin] Inno Setup metadata version: $InnoVersion" -ForegroundColor Cyan
+} else {
+    Write-Host "[GPC-DTwin] Inno Setup metadata version: unavailable/0.0.0" -ForegroundColor Yellow
 }
+Write-Host "[GPC-DTwin] Compiler: $ISCC"
+
+# Capability probe is authoritative. It avoids false failures when ISCC.exe
+# reports ProductVersion=0.0.0 while still being a modern Inno Setup 7 compiler.
+$ProbeRoot = Join-Path $RepoRoot ".runtime\inno-capability-probe"
+$ProbeIss = Join-Path $ProbeRoot "x64compatible-probe.iss"
+New-Item -ItemType Directory -Force -Path $ProbeRoot | Out-Null
+@'
+[Setup]
+AppName=GPC-DTwin Inno Capability Probe
+AppVersion=1.0
+DefaultDirName={tmp}\GPC-DTwin-Inno-Probe
+Uninstallable=no
+Output=no
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+'@ | Set-Content -Encoding UTF8 $ProbeIss
+
+Write-Host "[GPC-DTwin] Verifying x64compatible installer support..." -ForegroundColor Cyan
+$ProbeLog = & $ISCC /Q $ProbeIss 2>&1
+$ProbeExitCode = $LASTEXITCODE
+Remove-Item -Recurse -Force $ProbeRoot -ErrorAction SilentlyContinue
+
+if ($ProbeExitCode -ne 0) {
+    $ProbeText = ($ProbeLog | Out-String).Trim()
+    throw "The installed Inno Setup compiler does not support the required x64compatible architecture mode. Install Inno Setup 6.3 or newer. Compiler: $ISCC`n$ProbeText"
+}
+Write-Host "[GPC-DTwin] x64compatible support verified." -ForegroundColor Green
 
 $ReleaseDir = Join-Path $RepoRoot "release"
 New-Item -ItemType Directory -Force -Path $ReleaseDir | Out-Null
